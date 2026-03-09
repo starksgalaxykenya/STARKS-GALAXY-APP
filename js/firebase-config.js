@@ -6,7 +6,7 @@
 // https://console.firebase.google.com/
 // ============================================
 
-export const firebaseConfig = {
+export const FIREBASE_CONFIG = {
   apiKey: "AIzaSyBORBswvSauHGag4Zkp4f_If3Rx9zNiagU",
   authDomain: "carskenyaapp.firebaseapp.com",
   projectId: "carskenyaapp",
