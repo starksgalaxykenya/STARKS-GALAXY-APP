@@ -1,159 +1,203 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="light">
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>TaskFlow – Create Account</title>
+  <title>Starks Galaxy – Create Account</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;1,9..40,400&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="css/style.css"/>
 </head>
 <body class="auth-page">
-  <div class="auth-grid">
-    <div class="auth-brand">
-      <div class="brand-content">
-        <div class="logo-mark">
-          <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
-            <rect width="48" height="48" rx="14" fill="#2563eb"/>
-            <path d="M12 24L20 32L36 16" stroke="white" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
+<div class="brand-stars" id="stars"></div>
+<div class="auth-grid">
+  <div class="auth-brand">
+    <div class="brand-glow"></div>
+    <div class="brand-glow2"></div>
+    <div class="brand-content">
+      <div class="logo-mark">
+        <div class="logo-svg-wrap">
+          <svg width="28" height="28" viewBox="0 0 48 48" fill="none">
+            <path d="M12 24L20 32L36 16" stroke="white" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
           </svg>
-          <span class="logo-text">TaskFlow</span>
         </div>
-        <h1 class="brand-headline">Start for free.<br><em>Scale with ease.</em></h1>
-        <p class="brand-sub">Join thousands of teams managing work smarter with TaskFlow.</p>
-        <div class="brand-stats">
-          <div class="stat-pill"><span>✦</span> Free forever plan</div>
-          <div class="stat-pill"><span>✦</span> No credit card</div>
-          <div class="stat-pill"><span>✦</span> Set up in 2 minutes</div>
+        <div class="logo-text-wrap">
+          <span class="logo-text">Starks Galaxy</span>
+          <span class="logo-tagline">To More Stars, To More Galaxies</span>
         </div>
       </div>
-      <div class="brand-bg-art"></div>
-    </div>
-
-    <div class="auth-form-panel">
-      <div class="auth-form-wrap">
-        <h2 class="form-title">Create your account</h2>
-        <p class="form-subtitle">Start managing tasks today</p>
-
-        <div id="auth-error" class="alert alert-error hidden"></div>
-
-        <form id="signup-form" novalidate>
-          <div class="field-group">
-            <label for="name">Full name</label>
-            <input type="text" id="name" placeholder="Jane Smith" required autocomplete="name"/>
-          </div>
-          <div class="field-group">
-            <label for="email">Email address</label>
-            <input type="email" id="email" placeholder="you@company.com" required autocomplete="email"/>
-          </div>
-          <div class="field-group">
-            <label for="password">Password</label>
-            <div class="input-wrap">
-              <input type="password" id="password" placeholder="Min. 8 characters" required minlength="8"/>
-              <button type="button" class="toggle-pw" tabindex="-1">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-              </button>
-            </div>
-            <div class="pw-strength" id="pw-strength">
-              <div class="pw-bar"><div id="pw-fill"></div></div>
-              <span id="pw-label"></span>
-            </div>
-          </div>
-          <div class="field-group">
-            <label for="confirm">Confirm password</label>
-            <input type="password" id="confirm" placeholder="••••••••" required/>
-          </div>
-          <label class="checkbox-label" style="margin-bottom:1.25rem">
-            <input type="checkbox" id="terms" required/>
-            I agree to the <a href="#" class="text-link">Terms of Service</a>
-          </label>
-          <button type="submit" class="btn-primary btn-full" id="signup-btn">
-            <span class="btn-text">Create account</span>
-            <span class="btn-loader hidden"></span>
-          </button>
-        </form>
-
-        <div class="divider"><span>or</span></div>
-        <p class="switch-auth">Already have an account? <a href="login.html" class="text-link">Sign in →</a></p>
+      <h1 class="brand-headline">Start free.<br><em>Scale infinitely.</em></h1>
+      <p class="brand-sub">Join forward-thinking teams using Starks Galaxy to manage tasks, track time, run meetings and collaborate — seamlessly.</p>
+      <div class="brand-features">
+        <div class="feature-pill"><div class="dot"></div>Free to get started</div>
+        <div class="feature-pill"><div class="dot"></div>Set up in 2 minutes</div>
+        <div class="feature-pill"><div class="dot"></div>No credit card needed</div>
+        <div class="feature-pill"><div class="dot"></div>Admin & role management</div>
+        <div class="feature-pill"><div class="dot"></div>Real-time sync across devices</div>
       </div>
     </div>
   </div>
 
-  <script type="module">
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-    import { getAuth, createUserWithEmailAndPassword, updateProfile } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
-    import { getFirestore, doc, setDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
-    import { FIREBASE_CONFIG } from "./js/firebase-config.js";
+  <div class="auth-form-panel">
+    <div class="auth-form-wrap">
+      <div class="auth-logo-mobile">
+        <div class="logo-svg-wrap" style="width:40px;height:40px;border-radius:11px">
+          <svg width="22" height="22" viewBox="0 0 48 48" fill="none">
+            <path d="M12 24L20 32L36 16" stroke="white" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </div>
+        <div class="logo-text-wrap">
+          <span class="logo-text" style="color:var(--text)">Starks Galaxy</span>
+          <span class="logo-tagline" style="color:var(--primary)">To More Stars, To More Galaxies</span>
+        </div>
+      </div>
 
-    const app = initializeApp(FIREBASE_CONFIG);
-    const auth = getAuth(app);
-    const db = getFirestore(app);
+      <h2 class="form-title">Create your account</h2>
+      <p class="form-subtitle">Start managing work smarter today</p>
 
-    const errorBox = document.getElementById('auth-error');
-    const signupBtn = document.getElementById('signup-btn');
+      <div id="auth-error" class="alert alert-error hidden"></div>
 
-    function showError(msg) {
-      errorBox.textContent = msg;
-      errorBox.classList.remove('hidden');
+      <form id="signup-form" novalidate>
+        <div class="form-row-2" style="gap:.875rem">
+          <div class="field-group" style="margin-bottom:0">
+            <label for="fname">First name</label>
+            <input type="text" id="fname" placeholder="Jane" required autocomplete="given-name"/>
+          </div>
+          <div class="field-group" style="margin-bottom:0">
+            <label for="lname">Last name</label>
+            <input type="text" id="lname" placeholder="Smith" required autocomplete="family-name"/>
+          </div>
+        </div>
+        <div style="margin-bottom:1.125rem"></div>
+        <div class="field-group">
+          <label for="email">Work email</label>
+          <input type="email" id="email" placeholder="jane@company.com" required autocomplete="email"/>
+        </div>
+        <div class="field-group">
+          <label for="password">Password</label>
+          <div class="input-wrap">
+            <input type="password" id="password" placeholder="Min. 8 characters" required minlength="8"/>
+            <button type="button" class="toggle-pw" tabindex="-1">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+            </button>
+          </div>
+          <div class="pw-strength">
+            <div class="pw-bar"><div id="pw-fill"></div></div>
+            <span id="pw-label"></span>
+          </div>
+        </div>
+        <div class="field-group">
+          <label for="confirm">Confirm password</label>
+          <input type="password" id="confirm" placeholder="••••••••" required/>
+        </div>
+        <label class="checkbox-label" style="margin-bottom:1.25rem">
+          <input type="checkbox" id="terms" required/>
+          I agree to the <a href="#" class="text-link">Terms of Service</a> and <a href="#" class="text-link">Privacy Policy</a>
+        </label>
+        <button type="submit" class="btn-primary btn-full" id="signup-btn">
+          <span class="btn-text">Create account</span>
+          <span class="btn-loader hidden"></span>
+        </button>
+      </form>
+
+      <div class="divider"><span>or</span></div>
+      <p class="switch-auth">Already have an account? <a href="login.html" class="text-link">Sign in →</a></p>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+  import { getAuth, createUserWithEmailAndPassword, updateProfile, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+  import { getFirestore, doc, setDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+  import { FIREBASE_CONFIG } from "./js/firebase-config.js";
+
+  // Stars
+  const starsEl = document.getElementById('stars');
+  for (let i = 0; i < 80; i++) {
+    const s = document.createElement('div'); s.className = 'star';
+    const size = Math.random() * 2.5 + 1;
+    s.style.cssText = `width:${size}px;height:${size}px;left:${Math.random()*100}%;top:${Math.random()*100}%;--d:${2+Math.random()*4}s;--o:${0.3+Math.random()*0.5};animation-delay:${Math.random()*4}s;`;
+    starsEl.appendChild(s);
+  }
+
+  const app = initializeApp(FIREBASE_CONFIG);
+  const auth = getAuth(app);
+  const db = getFirestore(app);
+
+  onAuthStateChanged(auth, (user) => { if (user) window.location.href = 'dashboard.html'; });
+
+  const errorBox = document.getElementById('auth-error');
+  const signupBtn = document.getElementById('signup-btn');
+
+  function showError(msg) { errorBox.textContent = msg; errorBox.classList.remove('hidden'); }
+  function setLoading(on) {
+    signupBtn.querySelector('.btn-text').classList.toggle('hidden', on);
+    signupBtn.querySelector('.btn-loader').classList.toggle('hidden', !on);
+    signupBtn.disabled = on;
+  }
+
+  document.getElementById('password').addEventListener('input', (e) => {
+    const val = e.target.value;
+    let strength = 0;
+    if (val.length >= 8) strength++;
+    if (/[A-Z]/.test(val)) strength++;
+    if (/[0-9]/.test(val)) strength++;
+    if (/[^A-Za-z0-9]/.test(val)) strength++;
+    const colors = ['', '#ef4444', '#f59e0b', '#3b82f6', '#22c55e'];
+    const labels = ['', 'Weak', 'Fair', 'Good', 'Strong'];
+    document.getElementById('pw-fill').style.width = (strength / 4 * 100) + '%';
+    document.getElementById('pw-fill').style.background = colors[strength];
+    document.getElementById('pw-label').textContent = labels[strength];
+    document.getElementById('pw-label').style.color = colors[strength];
+  });
+
+  document.querySelector('.toggle-pw').addEventListener('click', () => {
+    const pw = document.getElementById('password');
+    pw.type = pw.type === 'password' ? 'text' : 'password';
+  });
+
+  document.getElementById('signup-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const fname = document.getElementById('fname').value.trim();
+    const lname = document.getElementById('lname').value.trim();
+    const email = document.getElementById('email').value.trim();
+    const password = document.getElementById('password').value;
+    const confirm = document.getElementById('confirm').value;
+    const terms = document.getElementById('terms').checked;
+    errorBox.classList.add('hidden');
+    if (!fname || !lname) { showError('Please enter your full name.'); return; }
+    if (!terms) { showError('Please accept the Terms of Service.'); return; }
+    if (password !== confirm) { showError('Passwords do not match.'); return; }
+    if (password.length < 8) { showError('Password must be at least 8 characters.'); return; }
+    setLoading(true);
+    try {
+      const cred = await createUserWithEmailAndPassword(auth, email, password);
+      const displayName = `${fname} ${lname}`;
+      await updateProfile(cred.user, { displayName });
+      await setDoc(doc(db, 'users', cred.user.uid), {
+        uid: cred.user.uid,
+        name: displayName,
+        firstName: fname,
+        lastName: lname,
+        email,
+        role: 'member',
+        companies: [],
+        createdAt: serverTimestamp(),
+        clockedIn: false,
+        clockInTime: null
+      });
+      window.location.href = 'dashboard.html';
+    } catch (err) {
+      const msgs = {
+        'auth/email-already-in-use': 'Email already in use.',
+        'auth/invalid-email': 'Invalid email address.',
+        'auth/weak-password': 'Password too weak.'
+      };
+      showError(msgs[err.code] || 'Could not create account.');
+      setLoading(false);
     }
-    function setLoading(on) {
-      signupBtn.querySelector('.btn-text').classList.toggle('hidden', on);
-      signupBtn.querySelector('.btn-loader').classList.toggle('hidden', !on);
-      signupBtn.disabled = on;
-    }
-
-    // Password strength
-    document.getElementById('password').addEventListener('input', (e) => {
-      const val = e.target.value;
-      const fill = document.getElementById('pw-fill');
-      const label = document.getElementById('pw-label');
-      let strength = 0;
-      if (val.length >= 8) strength++;
-      if (/[A-Z]/.test(val)) strength++;
-      if (/[0-9]/.test(val)) strength++;
-      if (/[^A-Za-z0-9]/.test(val)) strength++;
-      const levels = ['', 'Weak', 'Fair', 'Good', 'Strong'];
-      const colors = ['', '#ef4444', '#f59e0b', '#3b82f6', '#22c55e'];
-      fill.style.width = (strength / 4 * 100) + '%';
-      fill.style.background = colors[strength];
-      label.textContent = levels[strength];
-      label.style.color = colors[strength];
-    });
-
-    document.querySelector('.toggle-pw').addEventListener('click', () => {
-      const pw = document.getElementById('password');
-      pw.type = pw.type === 'password' ? 'text' : 'password';
-    });
-
-    document.getElementById('signup-form').addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const name = document.getElementById('name').value.trim();
-      const email = document.getElementById('email').value.trim();
-      const password = document.getElementById('password').value;
-      const confirm = document.getElementById('confirm').value;
-      const terms = document.getElementById('terms').checked;
-      errorBox.classList.add('hidden');
-      if (!terms) { showError('Please accept the Terms of Service.'); return; }
-      if (password !== confirm) { showError('Passwords do not match.'); return; }
-      if (password.length < 8) { showError('Password must be at least 8 characters.'); return; }
-      setLoading(true);
-      try {
-        const cred = await createUserWithEmailAndPassword(auth, email, password);
-        await updateProfile(cred.user, { displayName: name });
-        await setDoc(doc(db, 'users', cred.user.uid), {
-          name, email, createdAt: serverTimestamp(), uid: cred.user.uid
-        });
-        window.location.href = 'dashboard.html';
-      } catch (err) {
-        const msgs = {
-          'auth/email-already-in-use': 'An account with this email already exists.',
-          'auth/invalid-email': 'Please enter a valid email address.',
-          'auth/weak-password': 'Password is too weak.'
-        };
-        showError(msgs[err.code] || 'Could not create account. Try again.');
-        setLoading(false);
-      }
-    });
-  </script>
+  });
+</script>
 </body>
 </html>
