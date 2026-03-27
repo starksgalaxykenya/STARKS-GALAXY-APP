@@ -2,7 +2,7 @@
   "name": "Starks Galaxy",
   "short_name": "Starks",
   "description": "Task management, time tracking, project boards, meeting minutes, notes and team collaboration",
-  "start_url": "/dashboard.html",
+  "start_url": "/STARKS-GALAXY-APP/dashboard.html",
   "scope": "/",
   "display": "standalone",
   "orientation": "portrait",
