@@ -10,6 +10,123 @@ import {
 import { getStorage, ref as sRef, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-storage.js";
 import { FIREBASE_CONFIG } from "./firebase-config.js";
 
+// Add this at the beginning of your app.js, after imports
+// ============================================================
+// PWA Service Worker Registration
+// ============================================================
+
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js')
+      .then(registration => {
+        console.log('[PWA] ServiceWorker registered successfully with scope:', registration.scope);
+        
+        // Check for updates
+        registration.addEventListener('updatefound', () => {
+          const newWorker = registration.installing;
+          console.log('[PWA] ServiceWorker update found!');
+          
+          newWorker.addEventListener('statechange', () => {
+            if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+              // New update available, show notification
+              showUpdateNotification();
+            }
+          });
+        });
+      })
+      .catch(error => {
+        console.log('[PWA] ServiceWorker registration failed:', error);
+      });
+    
+    // Handle online/offline events
+    window.addEventListener('online', () => {
+      showToast('Back online! Data will sync automatically.', 'success');
+    });
+    
+    window.addEventListener('offline', () => {
+      showToast('You are offline. Some features may be limited.', 'warning');
+    });
+  });
+}
+
+// Add this function to show update notification
+function showUpdateNotification() {
+  const updateToast = document.createElement('div');
+  updateToast.className = 'toast update-toast';
+  updateToast.innerHTML = `
+    <span>🔄</span>
+    New version available! 
+    <button onclick="location.reload()" style="background:none;border:none;color:white;text-decoration:underline;margin-left:0.5rem;cursor:pointer">
+      Update now
+    </button>
+  `;
+  const container = document.getElementById('toast-container');
+  if (container) {
+    container.appendChild(updateToast);
+    setTimeout(() => {
+      updateToast.style.animation = 'toastOut .22s ease forwards';
+      setTimeout(() => updateToast.remove(), 220);
+    }, 8000);
+  }
+}
+
+// Optional: Add offline data sync
+let syncQueue = [];
+let isOnline = navigator.onLine;
+
+async function queueOfflineAction(action, data) {
+  syncQueue.push({ action, data, timestamp: Date.now() });
+  localStorage.setItem('offline-sync-queue', JSON.stringify(syncQueue));
+}
+
+async function processOfflineQueue() {
+  if (!navigator.onLine) return;
+  
+  const queue = JSON.parse(localStorage.getItem('offline-sync-queue') || '[]');
+  if (queue.length === 0) return;
+  
+  for (const item of queue) {
+    try {
+      // Process queued actions
+      if (item.action === 'create-task') {
+        await createTask(item.data);
+      } else if (item.action === 'update-task') {
+        await updateTask(item.data.id, item.data.updates);
+      } else if (item.action === 'add-comment') {
+        await addComment(item.data.taskId, item.data.text);
+      }
+    } catch (err) {
+      console.error('Failed to sync offline action:', err);
+      // Keep in queue if still failing
+      continue;
+    }
+  }
+  
+  // Clear processed queue
+  localStorage.removeItem('offline-sync-queue');
+  syncQueue = [];
+  showToast('Offline data synced successfully!', 'success');
+}
+
+// Listen for online events to sync offline data
+window.addEventListener('online', processOfflineQueue);
+
+// Modify your createTask, updateTask, addComment functions to queue offline actions
+// For example, modify createTask:
+const originalCreateTask = createTask;
+window.createTask = async function(data) {
+  if (!navigator.onLine) {
+    queueOfflineAction('create-task', data);
+    showToast('Task saved offline. Will sync when online.', 'info');
+    // Add to local state immediately
+    const tempTask = { id: 'temp-' + Date.now(), ...data, status: 'pending-sync' };
+    allTasks.unshift(tempTask);
+    renderTasks();
+    return tempTask.id;
+  }
+  return originalCreateTask(data);
+};
+
 // ─── Init ──────────────────────────────────────────────────
 const app = initializeApp(FIREBASE_CONFIG);
 const auth = getAuth(app);
