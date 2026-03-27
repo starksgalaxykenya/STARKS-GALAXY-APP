@@ -10,6 +10,64 @@ import {
 import { getStorage, ref as sRef, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-storage.js";
 import { FIREBASE_CONFIG } from "./firebase-config.js";
 
+// Enhanced Service Worker Registration with Debugging
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', async () => {
+    try {
+      // Unregister any existing service workers to ensure clean state
+      const registrations = await navigator.serviceWorker.getRegistrations();
+      for (let registration of registrations) {
+        if (registration.active && registration.active.scriptURL.includes('sw.js')) {
+          console.log('[SW] Found existing SW, keeping it');
+        }
+      }
+      
+      // Register new service worker
+      const registration = await navigator.serviceWorker.register('/sw.js', {
+        scope: '/'
+      });
+      
+      console.log('[SW] ServiceWorker registered successfully with scope:', registration.scope);
+      
+      // Check if service worker is active
+      if (registration.active) {
+        console.log('[SW] ServiceWorker is active');
+      }
+      
+      // Check for updates
+      registration.addEventListener('updatefound', () => {
+        console.log('[SW] ServiceWorker update found!');
+        const newWorker = registration.installing;
+        
+        newWorker.addEventListener('statechange', () => {
+          console.log('[SW] ServiceWorker state changed:', newWorker.state);
+          
+          if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+            console.log('[SW] New version available, show update notification');
+            showUpdateNotification();
+          }
+        });
+      });
+      
+      // Verify the service worker is controlling the page
+      if (!navigator.serviceWorker.controller) {
+        console.log('[SW] ServiceWorker not controlling page yet, reloading...');
+        // Reload to ensure service worker takes control
+        window.location.reload();
+      }
+      
+    } catch (error) {
+      console.error('[SW] ServiceWorker registration failed:', error);
+    }
+  });
+  
+  // Handle controller change
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    console.log('[SW] Controller changed, new service worker is active');
+  });
+}
+
+
 // ─── PWA Install Prompt (Enhanced) ──────────────────────────────────
 let deferredPrompt;
 
