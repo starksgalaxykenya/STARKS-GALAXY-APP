@@ -1,6 +1,6 @@
 {
   "name": "Starks Galaxy",
-  "short_name": "Starks Galaxy",
+  "short_name": "Starks",
   "description": "Task management, time tracking, project boards, meeting minutes, notes and team collaboration",
   "start_url": "/dashboard.html",
   "scope": "/",
@@ -59,26 +59,6 @@
       "purpose": "any maskable"
     }
   ],
-  "screenshots": [
-    {
-      "src": "/screenshots/desktop-dashboard.png",
-      "sizes": "1280x720",
-      "type": "image/png",
-      "form_factor": "wide",
-      "label": "Dashboard view"
-    },
-    {
-      "src": "/screenshots/mobile-dashboard.png",
-      "sizes": "720x1280",
-      "type": "image/png",
-      "form_factor": "narrow",
-      "label": "Mobile dashboard"
-    }
-  ],
-  "categories": ["productivity", "business"],
-  "lang": "en",
-  "dir": "ltr",
-  "prefer_related_applications": false,
   "shortcuts": [
     {
       "name": "New Task",
@@ -104,5 +84,9 @@
       "description": "View your kanban board",
       "url": "/dashboard.html?view=kanban"
     }
-  ]
+  ],
+  "categories": ["productivity", "business"],
+  "lang": "en",
+  "dir": "ltr",
+  "prefer_related_applications": false
 }
