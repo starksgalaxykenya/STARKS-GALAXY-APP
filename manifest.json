@@ -5,7 +5,6 @@
   "start_url": "/dashboard.html",
   "scope": "/",
   "display": "standalone",
-  "display_override": ["window-controls-overlay", "standalone"],
   "orientation": "portrait",
   "theme_color": "#2563eb",
   "background_color": "#0f172a",
@@ -58,35 +57,5 @@
       "type": "image/png",
       "purpose": "any maskable"
     }
-  ],
-  "shortcuts": [
-    {
-      "name": "New Task",
-      "short_name": "Task",
-      "description": "Create a new task quickly",
-      "url": "/dashboard.html?action=new-task",
-      "icons": [
-        {
-          "src": "/icons/task-shortcut-96x96.png",
-          "sizes": "96x96"
-        }
-      ]
-    },
-    {
-      "name": "Time Clock",
-      "short_name": "Clock",
-      "description": "Clock in/out",
-      "url": "/dashboard.html?view=timeclock"
-    },
-    {
-      "name": "Kanban Board",
-      "short_name": "Board",
-      "description": "View your kanban board",
-      "url": "/dashboard.html?view=kanban"
-    }
-  ],
-  "categories": ["productivity", "business"],
-  "lang": "en",
-  "dir": "ltr",
-  "prefer_related_applications": false
+  ]
 }
