@@ -10,122 +10,145 @@ import {
 import { getStorage, ref as sRef, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-storage.js";
 import { FIREBASE_CONFIG } from "./firebase-config.js";
 
-// Add this at the beginning of your app.js, after imports
-// ============================================================
-// PWA Service Worker Registration
-// ============================================================
+// ─── PWA Install Prompt (Enhanced) ──────────────────────────────────
+let deferredPrompt;
 
-if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js')
-      .then(registration => {
-        console.log('[PWA] ServiceWorker registered successfully with scope:', registration.scope);
-        
-        // Check for updates
-        registration.addEventListener('updatefound', () => {
-          const newWorker = registration.installing;
-          console.log('[PWA] ServiceWorker update found!');
-          
-          newWorker.addEventListener('statechange', () => {
-            if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-              // New update available, show notification
-              showUpdateNotification();
-            }
-          });
-        });
-      })
-      .catch(error => {
-        console.log('[PWA] ServiceWorker registration failed:', error);
-      });
-    
-    // Handle online/offline events
-    window.addEventListener('online', () => {
-      showToast('Back online! Data will sync automatically.', 'success');
-    });
-    
-    window.addEventListener('offline', () => {
-      showToast('You are offline. Some features may be limited.', 'warning');
-    });
-  });
-}
-
-// Add this function to show update notification
-function showUpdateNotification() {
-  const updateToast = document.createElement('div');
-  updateToast.className = 'toast update-toast';
-  updateToast.innerHTML = `
-    <span>🔄</span>
-    New version available! 
-    <button onclick="location.reload()" style="background:none;border:none;color:white;text-decoration:underline;margin-left:0.5rem;cursor:pointer">
-      Update now
-    </button>
-  `;
-  const container = document.getElementById('toast-container');
-  if (container) {
-    container.appendChild(updateToast);
-    setTimeout(() => {
-      updateToast.style.animation = 'toastOut .22s ease forwards';
-      setTimeout(() => updateToast.remove(), 220);
-    }, 8000);
+// Log PWA installability status
+window.addEventListener('load', async () => {
+  console.log('[PWA] Page loaded, checking installability...');
+  
+  // Check if app is already installed
+  if (window.matchMedia('(display-mode: standalone)').matches) {
+    console.log('[PWA] App is already installed and running in standalone mode');
+    return;
   }
-}
-
-// Optional: Add offline data sync
-let syncQueue = [];
-let isOnline = navigator.onLine;
-
-async function queueOfflineAction(action, data) {
-  syncQueue.push({ action, data, timestamp: Date.now() });
-  localStorage.setItem('offline-sync-queue', JSON.stringify(syncQueue));
-}
-
-async function processOfflineQueue() {
-  if (!navigator.onLine) return;
   
-  const queue = JSON.parse(localStorage.getItem('offline-sync-queue') || '[]');
-  if (queue.length === 0) return;
+  // Check if beforeinstallprompt is supported
+  if ('BeforeInstallPromptEvent' in window) {
+    console.log('[PWA] BeforeInstallPromptEvent is supported');
+  } else {
+    console.log('[PWA] BeforeInstallPromptEvent not supported in this browser');
+  }
   
-  for (const item of queue) {
-    try {
-      // Process queued actions
-      if (item.action === 'create-task') {
-        await createTask(item.data);
-      } else if (item.action === 'update-task') {
-        await updateTask(item.data.id, item.data.updates);
-      } else if (item.action === 'add-comment') {
-        await addComment(item.data.taskId, item.data.text);
-      }
-    } catch (err) {
-      console.error('Failed to sync offline action:', err);
-      // Keep in queue if still failing
-      continue;
+  // Check service worker
+  if ('serviceWorker' in navigator) {
+    const registration = await navigator.serviceWorker.getRegistration();
+    if (registration) {
+      console.log('[PWA] Service worker registered:', registration.scope);
+    } else {
+      console.log('[PWA] No service worker registration found');
     }
   }
+});
+
+window.addEventListener('beforeinstallprompt', (e) => {
+  console.log('[PWA] beforeinstallprompt event fired! ✅');
   
-  // Clear processed queue
-  localStorage.removeItem('offline-sync-queue');
-  syncQueue = [];
-  showToast('Offline data synced successfully!', 'success');
+  // Prevent Chrome 67 and earlier from automatically showing the prompt
+  e.preventDefault();
+  
+  // Stash the event so it can be triggered later
+  deferredPrompt = e;
+  
+  // Show install button immediately
+  showInstallButton();
+  
+  // Also log that we're ready to install
+  console.log('[PWA] Ready to install. Install button will appear.');
+});
+
+// Also listen for appinstalled event
+window.addEventListener('appinstalled', () => {
+  console.log('[PWA] App was installed successfully! 🎉');
+  const btn = document.getElementById('install-pwa-btn');
+  if (btn) btn.remove();
+  deferredPrompt = null;
+});
+
+function showInstallButton() {
+  // Don't show if already installed
+  if (window.matchMedia('(display-mode: standalone)').matches) {
+    console.log('[PWA] Already in standalone mode, not showing install button');
+    return;
+  }
+  
+  // Don't show if button already exists
+  if (document.getElementById('install-pwa-btn')) return;
+  
+  // Only show if we have the deferred prompt
+  if (!deferredPrompt) {
+    console.log('[PWA] No deferredPrompt available, install button not shown');
+    return;
+  }
+  
+  console.log('[PWA] Showing install button');
+  
+  const installBtn = document.createElement('button');
+  installBtn.id = 'install-pwa-btn';
+  installBtn.className = 'btn-primary sm';
+  installBtn.innerHTML = '📱 Install App';
+  installBtn.style.position = 'fixed';
+  installBtn.style.bottom = '20px';
+  installBtn.style.right = '20px';
+  installBtn.style.zIndex = '1000';
+  installBtn.style.boxShadow = '0 4px 12px rgba(0,0,0,0.15)';
+  installBtn.style.cursor = 'pointer';
+  installBtn.style.padding = '12px 20px';
+  installBtn.style.borderRadius = '12px';
+  installBtn.style.fontWeight = '600';
+  
+  installBtn.addEventListener('click', async () => {
+    console.log('[PWA] Install button clicked');
+    
+    if (!deferredPrompt) {
+      console.log('[PWA] No deferredPrompt available');
+      return;
+    }
+    
+    // Show the install prompt
+    deferredPrompt.prompt();
+    
+    // Wait for the user to respond to the prompt
+    const { outcome } = await deferredPrompt.userChoice;
+    console.log(`[PWA] User response to install prompt: ${outcome}`);
+    
+    // We've used the prompt, and can't use it again, discard it
+    deferredPrompt = null;
+    installBtn.remove();
+  });
+  
+  document.body.appendChild(installBtn);
 }
 
-// Listen for online events to sync offline data
-window.addEventListener('online', processOfflineQueue);
-
-// Modify your createTask, updateTask, addComment functions to queue offline actions
-// For example, modify createTask:
-const originalCreateTask = createTask;
-window.createTask = async function(data) {
-  if (!navigator.onLine) {
-    queueOfflineAction('create-task', data);
-    showToast('Task saved offline. Will sync when online.', 'info');
-    // Add to local state immediately
-    const tempTask = { id: 'temp-' + Date.now(), ...data, status: 'pending-sync' };
-    allTasks.unshift(tempTask);
-    renderTasks();
-    return tempTask.id;
+// Alternative: Add install button in the sidebar
+function addInstallButtonToSidebar() {
+  const sidebarFooter = document.querySelector('.sidebar-footer');
+  if (sidebarFooter && !document.getElementById('sidebar-install-btn')) {
+    const installBtn = document.createElement('button');
+    installBtn.id = 'sidebar-install-btn';
+    installBtn.className = 'sidebar-icon-btn';
+    installBtn.title = 'Install App';
+    installBtn.innerHTML = '📱';
+    installBtn.style.fontSize = '18px';
+    
+    installBtn.addEventListener('click', async () => {
+      if (deferredPrompt) {
+        deferredPrompt.prompt();
+        const { outcome } = await deferredPrompt.userChoice;
+        console.log(`[PWA] User response: ${outcome}`);
+        deferredPrompt = null;
+      } else {
+        console.log('[PWA] No install prompt available');
+        showToast('This app can be installed from the browser menu', 'info');
+      }
+    });
+    
+    sidebarFooter.insertBefore(installBtn, sidebarFooter.lastElementChild);
   }
-  return originalCreateTask(data);
-};
+}
+
+// Call this after sidebar is rendered
+setTimeout(addInstallButtonToSidebar, 1000);
 
 // ─── Init ──────────────────────────────────────────────────
 const app = initializeApp(FIREBASE_CONFIG);
