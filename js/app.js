@@ -178,6 +178,48 @@ async function loadUserProfile() {
   }
 }
 
+// PWA Install Prompt
+let deferredPrompt;
+
+window.addEventListener('beforeinstallprompt', (e) => {
+  // Prevent Chrome 67 and earlier from automatically showing the prompt
+  e.preventDefault();
+  // Stash the event so it can be triggered later
+  deferredPrompt = e;
+  
+  // Show install button (add to your UI)
+  showInstallButton();
+});
+
+function showInstallButton() {
+  const installBtn = document.createElement('button');
+  installBtn.id = 'install-pwa-btn';
+  installBtn.className = 'btn-primary sm';
+  installBtn.innerHTML = '📱 Install App';
+  installBtn.style.position = 'fixed';
+  installBtn.style.bottom = '20px';
+  installBtn.style.right = '20px';
+  installBtn.style.zIndex = '1000';
+  installBtn.style.boxShadow = '0 4px 12px rgba(0,0,0,0.15)';
+  
+  installBtn.addEventListener('click', async () => {
+    if (!deferredPrompt) return;
+    
+    // Show the install prompt
+    deferredPrompt.prompt();
+    
+    // Wait for the user to respond to the prompt
+    const { outcome } = await deferredPrompt.userChoice;
+    console.log(`User response to the install prompt: ${outcome}`);
+    
+    // We've used the prompt, and can't use it again, discard it
+    deferredPrompt = null;
+    installBtn.remove();
+  });
+  
+  document.body.appendChild(installBtn);
+}
+
 // ─── App Init ──────────────────────────────────────────────
 function initApp() {
   setupUI();
