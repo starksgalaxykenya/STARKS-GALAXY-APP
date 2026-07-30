@@ -34,14 +34,19 @@ service cloud.firestore {
 
     // Tasks: owner or assigned users
     match /tasks/{taskId} {
+      function isAssignee() {
+        return resource.data.assignedTo == request.auth.uid ||
+               resource.data.assignedTo == request.auth.token.email;
+      }
       allow read: if isAuth() && (
-        resource.data.createdBy == request.auth.uid ||
-        resource.data.assignedTo == request.auth.uid ||
-        resource.data.assignedTo == request.auth.token.email
+        resource.data.createdBy == request.auth.uid || isAssignee()
       );
       allow create: if isAuth() && request.resource.data.createdBy == request.auth.uid;
+      // Assignees can update (status, comments, attachments) but not delete or
+      // reassign away from themselves; only the creator/admin can delete or reassign.
       allow update: if isAuth() && (
-        resource.data.createdBy == request.auth.uid || isAdmin()
+        resource.data.createdBy == request.auth.uid || isAdmin() ||
+        (isAssignee() && request.resource.data.createdBy == resource.data.createdBy)
       );
       allow delete: if isAuth() && (
         resource.data.createdBy == request.auth.uid || isAdmin()
@@ -78,6 +83,26 @@ service cloud.firestore {
     match /companies/{companyId} {
       allow read: if isAuth();
       allow write: if isAdmin();
+    }
+
+    // Finance Entries: income / expense / accrual — readable by all authenticated
+    // team members, writable by the creator or an admin/manager.
+    match /financeEntries/{entryId} {
+      allow read: if isAuth();
+      allow create: if isAuth() && request.resource.data.createdBy == request.auth.uid;
+      allow update, delete: if isAuth() && (
+        resource.data.createdBy == request.auth.uid || isAdmin()
+      );
+    }
+
+    // Petty Cash: readable by all authenticated team members, writable by the
+    // creator or an admin/manager.
+    match /pettyCash/{txId} {
+      allow read: if isAuth();
+      allow create: if isAuth() && request.resource.data.createdBy == request.auth.uid;
+      allow update, delete: if isAuth() && (
+        resource.data.createdBy == request.auth.uid || isAdmin()
+      );
     }
   }
 }
