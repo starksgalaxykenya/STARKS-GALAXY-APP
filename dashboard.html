@@ -65,6 +65,11 @@
         <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
         Time & Clock
       </a>
+      <a href="#" class="nav-item" data-view="finance">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+        Finance
+        <span class="nav-badge" id="nb-accruals">0</span>
+      </a>
     </nav>
 
     <div class="nav-section-label">Workspace</div>
@@ -281,6 +286,87 @@
           <div class="time-table">
             <div class="time-row header"><div>User</div><div>Date</div><div>Clock In</div><div>Clock Out</div><div>Duration</div><div>Notes</div></div>
             <div id="time-log-list"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ── FINANCE ─────────────────────── -->
+      <section id="view-finance" class="view">
+        <div class="view-header">
+          <div class="view-title-group"><h1 class="view-title">Finance</h1><span class="view-subtitle">Income, expenses, accruals & petty cash</span></div>
+          <div class="view-actions">
+            <select id="finance-company-filter" class="filter-select">
+              <option value="">All Companies</option>
+            </select>
+            <button class="btn-ghost" id="export-finance-btn"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> Export CSV</button>
+            <button class="btn-primary" id="new-finance-btn"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> New Entry</button>
+          </div>
+        </div>
+
+        <div class="stats-grid" id="finance-stats-grid" style="grid-template-columns:repeat(5,1fr)">
+          <div class="stat-card" data-color="green"><div class="stat-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg></div><div class="stat-info"><span class="stat-num" id="fin-total-income">KES 0</span><span class="stat-label">Total Income</span></div></div>
+          <div class="stat-card" data-color="red"><div class="stat-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/></svg></div><div class="stat-info"><span class="stat-num" id="fin-total-expense">KES 0</span><span class="stat-label">Total Expenses</span></div></div>
+          <div class="stat-card" data-color="blue"><div class="stat-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg></div><div class="stat-info"><span class="stat-num" id="fin-net-balance">KES 0</span><span class="stat-label">Net Balance</span></div></div>
+          <div class="stat-card" data-color="amber"><div class="stat-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></div><div class="stat-info"><span class="stat-num" id="fin-pending-accruals">KES 0</span><span class="stat-label">Pending Accruals</span></div></div>
+          <div class="stat-card" data-color="purple"><div class="stat-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2"/><path d="M6 12h.01M18 12h.01"/></svg></div><div class="stat-info"><span class="stat-num" id="fin-pettycash-balance">KES 0</span><span class="stat-label">Petty Cash Balance</span></div></div>
+        </div>
+
+        <div class="fin-tabs" id="fin-tabs">
+          <button class="fin-tab active" data-fintab="overview">Overview</button>
+          <button class="fin-tab" data-fintab="transactions">Transactions</button>
+          <button class="fin-tab" data-fintab="pettycash">Petty Cash</button>
+        </div>
+
+        <!-- Overview tab -->
+        <div class="fin-tab-panel active" id="fintab-overview">
+          <div class="dash-grid">
+            <div class="dash-card"><div class="card-header"><span class="card-title">Income vs Expense by Month</span></div><div id="finance-monthly-chart"></div></div>
+            <div class="dash-card"><div class="card-header"><span class="card-title">Expenses by Category</span></div><div id="finance-category-chart"></div></div>
+          </div>
+          <div class="dash-card" style="margin-top:1.25rem">
+            <div class="card-header"><span class="card-title">Recent Transactions</span></div>
+            <div id="finance-recent-list"></div>
+          </div>
+        </div>
+
+        <!-- Transactions tab -->
+        <div class="fin-tab-panel" id="fintab-transactions">
+          <div class="view-actions" style="margin-bottom:1rem">
+            <select id="finance-type-filter" class="filter-select">
+              <option value="">All Types</option>
+              <option value="income">Income</option>
+              <option value="expense">Expense</option>
+              <option value="accrual">Accrual</option>
+            </select>
+            <select id="finance-status-filter" class="filter-select">
+              <option value="">All Statuses</option>
+              <option value="pending">Pending</option>
+              <option value="settled">Settled</option>
+            </select>
+            <input type="month" id="finance-month-filter" class="filter-select" title="Filter by month"/>
+          </div>
+          <div class="task-table-wrap">
+            <div class="finance-table-header">
+              <div>Date</div><div>Description</div><div>Category</div><div>Type</div><div>Status</div><div>Amount</div><div></div>
+            </div>
+            <div id="finance-table-list"></div>
+          </div>
+        </div>
+
+        <!-- Petty Cash tab -->
+        <div class="fin-tab-panel" id="fintab-pettycash">
+          <div class="pettycash-balance-card">
+            <div>
+              <div style="font-size:.8125rem;color:var(--text-muted);font-weight:500;margin-bottom:.375rem">Current Petty Cash Balance</div>
+              <div class="clock-time" id="pc-balance-display">KES 0</div>
+            </div>
+            <button class="btn-primary" id="new-pettycash-btn"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Add Transaction</button>
+          </div>
+          <div class="task-table-wrap" style="margin-top:1.25rem">
+            <div class="pettycash-table-header">
+              <div>Date</div><div>Description</div><div>Category</div><div>Type</div><div>Amount</div><div>Balance</div><div>By</div>
+            </div>
+            <div id="pettycash-table-list"></div>
           </div>
         </div>
       </section>
@@ -544,11 +630,116 @@
   </div>
 </div>
 
+<!-- ═══ FINANCE ENTRY MODAL ══════════════════ -->
+<div class="modal-overlay hidden" id="finance-modal-overlay">
+  <div class="modal modal-lg">
+    <div class="modal-header">
+      <h2 class="modal-title" id="finance-modal-title">New Finance Entry</h2>
+      <div class="modal-actions">
+        <button class="icon-btn icon-btn-danger" id="delete-finance-btn" style="display:none"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg></button>
+        <button class="icon-btn" id="finance-close-btn"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+      </div>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="finance-id"/>
+      <div class="type-selector" id="finance-type-selector">
+        <button type="button" class="type-opt active" data-fintype="income">Income</button>
+        <button type="button" class="type-opt" data-fintype="expense">Expense</button>
+        <button type="button" class="type-opt" data-fintype="accrual">Accrual</button>
+      </div>
+
+      <div class="field-group" id="fin-accrual-row" style="display:none">
+        <div class="form-row-2">
+          <div class="field-group"><label>Accrual Direction</label>
+            <select id="fin-accrual-direction">
+              <option value="receivable">Receivable — owed to us</option>
+              <option value="payable">Payable — we owe</option>
+            </select>
+          </div>
+          <div class="field-group"><label>Status</label>
+            <select id="fin-status">
+              <option value="pending">Pending</option>
+              <option value="settled">Settled</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <div class="form-row-2">
+        <div class="field-group"><label>Amount (KES) *</label><input type="number" id="fin-amount" min="0" step="0.01" placeholder="0.00" required/></div>
+        <div class="field-group"><label>Date *</label><input type="date" id="fin-date" required/></div>
+      </div>
+      <div class="form-row-2">
+        <div class="field-group"><label>Category</label><input type="text" id="fin-category" list="fin-category-list" placeholder="e.g. Sales, Rent, Salaries…"/>
+          <datalist id="fin-category-list"></datalist>
+        </div>
+        <div class="field-group"><label>Payment Method</label>
+          <select id="fin-payment-method">
+            <option value="">—</option>
+            <option value="Cash">Cash</option>
+            <option value="Bank Transfer">Bank Transfer</option>
+            <option value="M-Pesa">M-Pesa</option>
+            <option value="Card">Card</option>
+            <option value="Cheque">Cheque</option>
+            <option value="Petty Cash">Petty Cash</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-row-2">
+        <div class="field-group"><label>Company</label><select id="fin-company"><option value="">No company</option></select></div>
+        <div class="field-group"><label>Project</label><input type="text" id="fin-project" placeholder="Optional"/></div>
+      </div>
+      <div class="field-group"><label>Description</label><textarea id="fin-description" placeholder="What is this for?" rows="2"></textarea></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-ghost" id="finance-cancel-btn">Cancel</button>
+      <button class="btn-primary" id="save-finance-btn"><span class="btn-text">Save Entry</span><span class="btn-loader hidden"></span></button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ PETTY CASH MODAL ═════════════════════ -->
+<div class="modal-overlay hidden" id="pettycash-modal-overlay">
+  <div class="modal modal-sm">
+    <div class="modal-header">
+      <h2 class="modal-title" id="pettycash-modal-title">Petty Cash Transaction</h2>
+      <div class="modal-actions">
+        <button class="icon-btn icon-btn-danger" id="delete-pettycash-btn" style="display:none"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg></button>
+        <button class="icon-btn" id="pettycash-close-btn"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+      </div>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="pettycash-id"/>
+      <div class="type-selector" id="pettycash-type-selector">
+        <button type="button" class="type-opt active" data-pctype="topup">Top-up (cash in)</button>
+        <button type="button" class="type-opt" data-pctype="expense">Expense (cash out)</button>
+      </div>
+      <div class="field-group"><label>Amount (KES) *</label><input type="number" id="pc-amount" min="0" step="0.01" placeholder="0.00" required/></div>
+      <div class="field-group"><label>Date *</label><input type="date" id="pc-date" required/></div>
+      <div class="field-group" id="pc-category-row"><label>Category</label><input type="text" id="pc-category" list="pc-category-list" placeholder="e.g. Office supplies, Transport…"/>
+        <datalist id="pc-category-list">
+          <option value="Office Supplies"></option>
+          <option value="Transport"></option>
+          <option value="Refreshments"></option>
+          <option value="Airtime"></option>
+          <option value="Miscellaneous"></option>
+        </datalist>
+      </div>
+      <div class="field-group"><label>Description</label><textarea id="pc-description" placeholder="What is this for?" rows="2"></textarea></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-ghost" id="pettycash-cancel-btn">Cancel</button>
+      <button class="btn-primary" id="save-pettycash-btn"><span class="btn-text">Save Transaction</span><span class="btn-loader hidden"></span></button>
+    </div>
+  </div>
+</div>
+
 <!-- TOAST + SIDEBAR OVERLAY -->
 <div class="toast-container" id="toast-container"></div>
 <div class="sidebar-overlay hidden" id="sidebar-overlay"></div>
 
-<script type="module" src="js/app.js">
+<script type="module" src="js/app.js"></script>
+<script>
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
       navigator.serviceWorker.register('./sw.js')
