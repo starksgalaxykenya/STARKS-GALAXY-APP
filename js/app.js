@@ -25,10 +25,16 @@ let allMeetings = [];
 let allTimeLogs = [];
 let allUsers = [];
 let allCompanies = [];
+let allFinance = [];
+let allPettyCash = [];
 let currentTaskId = null;
 let currentNoteId = null;
 let currentMeetingId = null;
 let currentCompanyId = null;
+let currentFinanceId = null;
+let currentPettyCashId = null;
+let currentFinType = 'income';
+let currentPcType = 'topup';
 let currentView = 'dashboard';
 let calendarDate = new Date();
 let clockInterval = null;
@@ -36,10 +42,15 @@ let clockInTime = null;
 const unsubs = [];
 
 const PROJECT_COLORS = ['#2563eb','#8b5cf6','#f59e0b','#22c55e','#ef4444','#06b6d4','#ec4899','#84cc16'];
+const FIN_CATEGORIES = {
+  income: ['Sales','Consulting','Service Fees','Interest Income','Grants','Other Income'],
+  expense: ['Rent','Utilities','Salaries','Supplies','Marketing','Travel','Software/Subscriptions','Professional Fees','Maintenance','Other Expense'],
+  accrual: ['Sales','Consulting','Rent','Utilities','Salaries','Professional Fees','Other']
+};
 
 // ─── Auth Guard ────────────────────────────────────────────
 onAuthStateChanged(auth, async (user) => {
-  if (!user) { window.location.href = 'login.html'; return; }
+  if (!user) { window.location.href = 'index.html'; return; }
   currentUser = user;
   await loadUserProfile();
   initApp();
@@ -96,22 +107,44 @@ function subscribeAll() {
   subscribeTimeLogs();
   subscribeUsers();
   subscribeCompanies();
+  subscribeFinance();
+  subscribePettyCash();
 }
 
 function subscribeTasks() {
-  const q = query(collection(db, 'tasks'), where('createdBy', '==', currentUser.uid));
-  unsubs.push(onSnapshot(q, snap => {
-    allTasks = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a,b) => ts(b) - ts(a));
+  // Tasks can reach a user three ways: they created it, or they're assigned to it
+  // (by uid or by email — the "Assigned to" field accepts either). Merge all three
+  // live streams so assigned tasks actually show up for the assignee, not just the creator.
+  const taskBuckets = { created: [], assignedUid: [], assignedEmail: [] };
+  const mergeAndRender = () => {
+    const seen = new Map();
+    [...taskBuckets.created, ...taskBuckets.assignedUid, ...taskBuckets.assignedEmail]
+      .forEach(t => seen.set(t.id, t));
+    allTasks = [...seen.values()].sort((a,b) => ts(b) - ts(a));
     renderTasks();
     checkNotifications();
     el('nb-tasks').textContent = allTasks.filter(t => t.status !== 'completed').length;
-  }, () => {
-    const q2 = query(collection(db, 'tasks'), where('createdBy', '==', currentUser.uid));
-    unsubs.push(onSnapshot(q2, snap => {
-      allTasks = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a,b) => ts(b)-ts(a));
-      renderTasks(); checkNotifications();
-    }));
+  };
+
+  const qCreated = query(collection(db, 'tasks'), where('createdBy', '==', currentUser.uid));
+  unsubs.push(onSnapshot(qCreated, snap => {
+    taskBuckets.created = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    mergeAndRender();
   }));
+
+  const qAssignedUid = query(collection(db, 'tasks'), where('assignedTo', '==', currentUser.uid));
+  unsubs.push(onSnapshot(qAssignedUid, snap => {
+    taskBuckets.assignedUid = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    mergeAndRender();
+  }, () => {}));
+
+  if (currentUser.email) {
+    const qAssignedEmail = query(collection(db, 'tasks'), where('assignedTo', '==', currentUser.email));
+    unsubs.push(onSnapshot(qAssignedEmail, snap => {
+      taskBuckets.assignedEmail = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      mergeAndRender();
+    }, () => {}));
+  }
 }
 
 function subscribeNotes() {
@@ -158,6 +191,25 @@ function subscribeCompanies() {
     if (currentView === 'companies') renderCompanies();
     populateCompanySelects();
   }));
+}
+
+function subscribeFinance() {
+  const q = query(collection(db, 'financeEntries'));
+  unsubs.push(onSnapshot(q, snap => {
+    allFinance = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a,b) => new Date(b.date||0) - new Date(a.date||0));
+    const pendingCount = allFinance.filter(f => f.type==='accrual' && f.status==='pending').length;
+    const badge = el('nb-accruals');
+    if (badge) badge.textContent = pendingCount;
+    if (currentView === 'finance') renderFinance();
+  }, () => {}));
+}
+
+function subscribePettyCash() {
+  const q = query(collection(db, 'pettyCash'));
+  unsubs.push(onSnapshot(q, snap => {
+    allPettyCash = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a,b) => new Date(b.date||0) - new Date(a.date||0));
+    if (currentView === 'finance') renderFinance();
+  }, () => {}));
 }
 
 // ─── Render Tasks ─────────────────────────────────────────
@@ -429,7 +481,10 @@ function renderCompanySwitcher() {
 
 function populateCompanySelects() {
   const opts = '<option value="">No company</option>' + allCompanies.map(c => `<option value="${c.id}">${esc(c.name)}</option>`).join('');
-  [el('f-company'), el('invite-company')].forEach(sel => { if (sel) sel.innerHTML = opts; });
+  [el('f-company'), el('invite-company'), el('fin-company')].forEach(sel => { if (sel) sel.innerHTML = opts; });
+  const filterOpts = '<option value="">All Companies</option>' + allCompanies.map(c => `<option value="${c.id}">${esc(c.name)}</option>`).join('');
+  const financeFilter = el('finance-company-filter');
+  if (financeFilter) financeFilter.innerHTML = filterOpts;
 }
 
 window.deleteCompany = async (id) => {
@@ -631,18 +686,284 @@ function renderReports() {
   renderBarChart('report-project-chart', Object.entries(byProject).map(([label,value],i) => ({label, value, color: PROJECT_COLORS[i%PROJECT_COLORS.length]})));
 }
 
-function renderBarChart(containerId, data) {
+function renderBarChart(containerId, data, formatFn) {
   const el2 = el(containerId);
   if (!data.length) { el2.innerHTML = '<div class="empty-state">No data yet.</div>'; return; }
   const max = Math.max(...data.map(d=>d.value), 1);
+  const fmt = formatFn || (v => v);
   el2.innerHTML = data.map(d => `
     <div style="margin-bottom:.875rem">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.375rem">
         <span style="font-size:.875rem;font-weight:500;color:var(--text)">${esc(d.label)}</span>
-        <span style="font-size:.875rem;font-weight:700;color:var(--text)">${d.value}</span>
+        <span style="font-size:.875rem;font-weight:700;color:var(--text)">${fmt(d.value)}</span>
       </div>
       <div class="progress-bar-wrap md"><div class="progress-bar-fill" style="background:${d.color};width:${d.value/max*100}%"></div></div>
     </div>`).join('');
+}
+
+// ─── Finance ───────────────────────────────────────────────
+function fmtMoney(n) {
+  const v = Number(n) || 0;
+  return 'KES ' + v.toLocaleString('en-KE', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+}
+
+function getFilteredFinance() {
+  const companyId = el('finance-company-filter')?.value || '';
+  const type = el('finance-type-filter')?.value || '';
+  const status = el('finance-status-filter')?.value || '';
+  const month = el('finance-month-filter')?.value || '';
+  return allFinance.filter(f => {
+    if (companyId && f.companyId !== companyId) return false;
+    if (type && f.type !== type) return false;
+    if (status && (f.status||'na') !== status) return false;
+    if (month && (f.date||'').slice(0,7) !== month) return false;
+    return true;
+  });
+}
+
+function computeFinanceStats(entries) {
+  const income = entries.filter(f => f.type==='income').reduce((a,f)=>a+(Number(f.amount)||0),0);
+  const expense = entries.filter(f => f.type==='expense').reduce((a,f)=>a+(Number(f.amount)||0),0);
+  const pendingAccruals = entries.filter(f => f.type==='accrual' && f.status==='pending').reduce((a,f)=>a+(Number(f.amount)||0),0);
+  return { income, expense, net: income - expense, pendingAccruals };
+}
+
+function computePettyCashBalance(companyId) {
+  return allPettyCash
+    .filter(t => !companyId || t.companyId === companyId)
+    .reduce((bal, t) => bal + (t.txType==='topup' ? (Number(t.amount)||0) : -(Number(t.amount)||0)), 0);
+}
+
+function renderFinance() {
+  const companyId = el('finance-company-filter')?.value || '';
+  const filtered = getFilteredFinance();
+  const stats = computeFinanceStats(filtered);
+  el('fin-total-income').textContent = fmtMoney(stats.income);
+  el('fin-total-expense').textContent = fmtMoney(stats.expense);
+  el('fin-net-balance').textContent = fmtMoney(stats.net);
+  el('fin-pending-accruals').textContent = fmtMoney(stats.pendingAccruals);
+  el('fin-pettycash-balance').textContent = fmtMoney(computePettyCashBalance(companyId));
+  el('pc-balance-display').textContent = fmtMoney(computePettyCashBalance(companyId));
+
+  renderFinanceMonthlyChart(filtered);
+  renderFinanceCategoryChart(filtered);
+  renderFinanceRecentList(filtered);
+  renderFinanceTable(filtered);
+  renderPettyCashTable(companyId);
+}
+
+function renderFinanceMonthlyChart(entries) {
+  const byMonth = {};
+  entries.forEach(f => {
+    if (f.type==='accrual') return; // only realized income/expense in the monthly view
+    const m = (f.date||'').slice(0,7);
+    if (!m) return;
+    byMonth[m] = byMonth[m] || { income: 0, expense: 0 };
+    byMonth[m][f.type] += Number(f.amount)||0;
+  });
+  const months = Object.keys(byMonth).sort().slice(-6);
+  const data = [];
+  months.forEach(m => {
+    const label = new Date(m+'-01').toLocaleDateString('en-US',{month:'short',year:'2-digit'});
+    data.push({ label: `${label} · Income`, value: byMonth[m].income, color: '#22c55e' });
+    data.push({ label: `${label} · Expense`, value: byMonth[m].expense, color: '#ef4444' });
+  });
+  renderBarChart('finance-monthly-chart', data, fmtMoney);
+}
+
+function renderFinanceCategoryChart(entries) {
+  const byCat = {};
+  entries.filter(f => f.type==='expense').forEach(f => {
+    const c = f.category || 'Uncategorized';
+    byCat[c] = (byCat[c]||0) + (Number(f.amount)||0);
+  });
+  const data = Object.entries(byCat).sort((a,b)=>b[1]-a[1]).slice(0,8)
+    .map(([label,value],i) => ({ label, value, color: PROJECT_COLORS[i%PROJECT_COLORS.length] }));
+  renderBarChart('finance-category-chart', data, fmtMoney);
+}
+
+function renderFinanceRecentList(entries) {
+  const listEl = el('finance-recent-list');
+  const recent = entries.slice(0, 6);
+  if (!recent.length) { listEl.innerHTML = '<div class="empty-state">No transactions yet.</div>'; return; }
+  listEl.innerHTML = recent.map(f => `
+    <div class="finance-recent-row" data-id="${f.id}">
+      <div>
+        <div class="fin-recent-desc" style="font-weight:600;font-size:.875rem">${esc(f.description || f.category || capitalize(f.type))}</div>
+        <div style="font-size:.75rem;color:var(--text-muted)">${esc(f.date||'')} · ${esc(f.category||capitalize(f.type))}</div>
+      </div>
+      <span class="fin-amount ${f.type}">${f.type==='expense'?'-':'+'}${fmtMoney(f.amount)}</span>
+    </div>`).join('');
+  listEl.querySelectorAll('.finance-recent-row').forEach(row => row.addEventListener('click', () => openFinanceModal(row.dataset.id)));
+}
+
+function renderFinanceTable(entries) {
+  const listEl = el('finance-table-list');
+  if (!entries.length) { listEl.innerHTML = '<div class="empty-state">No finance entries match your filters.</div>'; return; }
+  listEl.innerHTML = entries.map(f => `
+    <div class="finance-table-row" data-id="${f.id}">
+      <div style="font-size:.8125rem;color:var(--text-muted)">${esc(f.date||'')}</div>
+      <div style="font-weight:500">${esc(f.description || '—')}</div>
+      <div style="font-size:.8125rem;color:var(--text-muted)">${esc(f.category||'—')}</div>
+      <div><span class="fin-type-badge ${f.type}">${f.type}</span></div>
+      <div>${f.type==='accrual' ? `<span class="fin-status-badge ${f.status||'pending'}">${f.status||'pending'}</span>` : '<span class="fin-status-badge na">—</span>'}</div>
+      <div class="fin-amount ${f.type}">${f.type==='expense'?'-':'+'}${fmtMoney(f.amount)}</div>
+      <div>${(f.type==='accrual' && f.status==='pending') ? `<button class="icon-btn" title="Mark settled" data-settle="${f.id}"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg></button>` : ''}</div>
+    </div>`).join('');
+  listEl.querySelectorAll('.finance-table-row').forEach(row => {
+    row.addEventListener('click', e => {
+      if (e.target.closest('[data-settle]')) return;
+      openFinanceModal(row.dataset.id);
+    });
+  });
+  listEl.querySelectorAll('[data-settle]').forEach(btn => {
+    btn.addEventListener('click', async e => {
+      e.stopPropagation();
+      await markAccrualSettled(btn.dataset.settle);
+    });
+  });
+}
+
+function renderPettyCashTable(companyId) {
+  const listEl = el('pettycash-table-list');
+  const entries = allPettyCash.filter(t => !companyId || t.companyId === companyId);
+  if (!entries.length) { listEl.innerHTML = '<div class="empty-state">No petty cash transactions yet.</div>'; return; }
+  // Compute running balance chronologically (oldest first), then display newest first
+  const chrono = [...entries].sort((a,b) => new Date(a.date||0) - new Date(b.date||0) || ts(a)-ts(b));
+  let running = 0;
+  const withBalance = chrono.map(t => {
+    running += t.txType==='topup' ? (Number(t.amount)||0) : -(Number(t.amount)||0);
+    return { ...t, _balance: running };
+  });
+  const display = [...withBalance].reverse();
+  listEl.innerHTML = display.map(t => `
+    <div class="pettycash-table-row" data-id="${t.id}">
+      <div style="font-size:.8125rem;color:var(--text-muted)">${esc(t.date||'')}</div>
+      <div style="font-weight:500">${esc(t.description || '—')}</div>
+      <div style="font-size:.8125rem;color:var(--text-muted)">${esc(t.category||'—')}</div>
+      <div><span class="fin-type-badge ${t.txType==='topup'?'income':'expense'}">${t.txType==='topup'?'In':'Out'}</span></div>
+      <div class="fin-amount ${t.txType==='topup'?'income':'expense'}">${t.txType==='topup'?'+':'-'}${fmtMoney(t.amount)}</div>
+      <div class="fin-amount" style="color:var(--text)">${fmtMoney(t._balance)}</div>
+      <div style="font-size:.8125rem;color:var(--text-muted)">${esc(t.createdByName||'')}</div>
+    </div>`).join('');
+  listEl.querySelectorAll('.pettycash-table-row').forEach(row => row.addEventListener('click', () => openPettyCashModal(row.dataset.id)));
+}
+
+function switchFinTab(name) {
+  document.querySelectorAll('.fin-tab').forEach(t => t.classList.toggle('active', t.dataset.fintab===name));
+  document.querySelectorAll('.fin-tab-panel').forEach(p => p.classList.toggle('active', p.id===`fintab-${name}`));
+}
+
+function setFinType(type) {
+  currentFinType = type;
+  document.querySelectorAll('#finance-type-selector .type-opt').forEach(b => b.classList.toggle('active', b.dataset.fintype===type));
+  el('fin-accrual-row').style.display = type==='accrual' ? '' : 'none';
+  el('fin-category-list').innerHTML = (FIN_CATEGORIES[type]||[]).map(c => `<option value="${esc(c)}"></option>`).join('');
+}
+
+function setPcType(type) {
+  currentPcType = type;
+  document.querySelectorAll('#pettycash-type-selector .type-opt').forEach(b => b.classList.toggle('active', b.dataset.pctype===type));
+  el('pc-category-row').style.display = type==='expense' ? '' : 'none';
+}
+
+function openFinanceModal(id) {
+  currentFinanceId = id;
+  el('finance-id').value = id || '';
+  el('delete-finance-btn').style.display = id ? '' : 'none';
+  if (id) {
+    const f = allFinance.find(x => x.id === id);
+    if (!f) return;
+    el('finance-modal-title').textContent = 'Edit Finance Entry';
+    setFinType(f.type||'income');
+    el('fin-amount').value = f.amount || '';
+    el('fin-date').value = f.date || '';
+    el('fin-category').value = f.category || '';
+    el('fin-payment-method').value = f.paymentMethod || '';
+    el('fin-company').value = f.companyId || '';
+    el('fin-project').value = f.project || '';
+    el('fin-description').value = f.description || '';
+    el('fin-accrual-direction').value = f.accrualDirection || 'receivable';
+    el('fin-status').value = f.status || 'pending';
+  } else {
+    el('finance-modal-title').textContent = 'New Finance Entry';
+    setFinType('income');
+    el('fin-amount').value = '';
+    el('fin-date').value = new Date().toISOString().split('T')[0];
+    el('fin-category').value = '';
+    el('fin-payment-method').value = '';
+    el('fin-company').value = '';
+    el('fin-project').value = '';
+    el('fin-description').value = '';
+    el('fin-accrual-direction').value = 'receivable';
+    el('fin-status').value = 'pending';
+  }
+  showModal('finance-modal-overlay');
+}
+
+function openPettyCashModal(id) {
+  currentPettyCashId = id;
+  el('pettycash-id').value = id || '';
+  el('delete-pettycash-btn').style.display = id ? '' : 'none';
+  if (id) {
+    const t = allPettyCash.find(x => x.id === id);
+    if (!t) return;
+    el('pettycash-modal-title').textContent = 'Edit Petty Cash Transaction';
+    setPcType(t.txType||'topup');
+    el('pc-amount').value = t.amount || '';
+    el('pc-date').value = t.date || '';
+    el('pc-category').value = t.category || '';
+    el('pc-description').value = t.description || '';
+  } else {
+    el('pettycash-modal-title').textContent = 'Petty Cash Transaction';
+    setPcType('topup');
+    el('pc-amount').value = '';
+    el('pc-date').value = new Date().toISOString().split('T')[0];
+    el('pc-category').value = '';
+    el('pc-description').value = '';
+  }
+  showModal('pettycash-modal-overlay');
+}
+
+async function createFinanceEntry(data) {
+  try { await addDoc(collection(db,'financeEntries'), { ...data, createdBy: currentUser.uid, createdByName: userProfile?.name||currentUser.email, createdAt: serverTimestamp(), updatedAt: serverTimestamp() }); showToast('Finance entry saved!','success'); }
+  catch { showToast('Failed to save entry.','error'); throw new Error(); }
+}
+async function updateFinanceEntry(id, data) {
+  try { await updateDoc(doc(db,'financeEntries',id), { ...data, updatedAt: serverTimestamp() }); showToast('Entry updated!','success'); }
+  catch { showToast('Update failed.','error'); }
+}
+async function deleteFinanceEntry(id) {
+  try { await deleteDoc(doc(db,'financeEntries',id)); showToast('Entry deleted.','warning'); }
+  catch { showToast('Delete failed.','error'); }
+}
+async function markAccrualSettled(id) {
+  try { await updateDoc(doc(db,'financeEntries',id), { status: 'settled', settledAt: serverTimestamp(), updatedAt: serverTimestamp() }); showToast('Marked as settled!','success'); }
+  catch { showToast('Failed to update.','error'); }
+}
+
+async function createPettyCashTx(data) {
+  try { await addDoc(collection(db,'pettyCash'), { ...data, createdBy: currentUser.uid, createdByName: userProfile?.name||currentUser.email, createdAt: serverTimestamp() }); showToast('Petty cash transaction saved!','success'); }
+  catch { showToast('Failed to save transaction.','error'); throw new Error(); }
+}
+async function updatePettyCashTx(id, data) {
+  try { await updateDoc(doc(db,'pettyCash',id), data); showToast('Transaction updated!','success'); }
+  catch { showToast('Update failed.','error'); }
+}
+async function deletePettyCashTx(id) {
+  try { await deleteDoc(doc(db,'pettyCash',id)); showToast('Transaction deleted.','warning'); }
+  catch { showToast('Delete failed.','error'); }
+}
+
+function exportFinanceCSV() {
+  const entries = getFilteredFinance();
+  const headers = ['Date','Type','Status','Category','Description','Amount','Payment Method','Company','Project'];
+  const companyName = id => allCompanies.find(c=>c.id===id)?.name || '';
+  const rows = entries.map(f => [f.date||'', f.type, f.status||'', f.category||'', f.description||'', f.amount||0, f.paymentMethod||'', companyName(f.companyId), f.project||''].map(v=>`"${String(v).replace(/"/g,'""')}"`).join(','));
+  const csv = [headers.join(','), ...rows].join('\n');
+  const a = document.createElement('a');
+  a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
+  a.download = 'finance.csv'; a.click();
 }
 
 // ─── Notifications ────────────────────────────────────────
@@ -1081,7 +1402,7 @@ function bindGlobalEvents() {
     if (clockInTime) await clockOut();
     unsubs.forEach(u => u());
     await signOut(auth);
-    window.location.href = 'login.html';
+    window.location.href = 'index.html';
   });
 
   // Calendar nav
@@ -1102,9 +1423,96 @@ function bindGlobalEvents() {
   // Export CSV
   el('export-tasks-btn')?.addEventListener('click', exportCSV);
 
+  // Finance
+  document.querySelectorAll('.fin-tab').forEach(tab => tab.addEventListener('click', () => switchFinTab(tab.dataset.fintab)));
+  document.querySelectorAll('#finance-type-selector .type-opt').forEach(btn => btn.addEventListener('click', () => setFinType(btn.dataset.fintype)));
+  document.querySelectorAll('#pettycash-type-selector .type-opt').forEach(btn => btn.addEventListener('click', () => setPcType(btn.dataset.pctype)));
+
+  el('new-finance-btn').addEventListener('click', () => openFinanceModal(null));
+  el('finance-close-btn').addEventListener('click', () => hideModal('finance-modal-overlay'));
+  el('finance-cancel-btn').addEventListener('click', () => hideModal('finance-modal-overlay'));
+  el('finance-modal-overlay').addEventListener('click', e => { if (e.target===el('finance-modal-overlay')) hideModal('finance-modal-overlay'); });
+  el('delete-finance-btn').addEventListener('click', async () => {
+    if (!currentFinanceId || !confirm('Delete this finance entry?')) return;
+    await deleteFinanceEntry(currentFinanceId);
+    hideModal('finance-modal-overlay');
+  });
+  el('save-finance-btn').addEventListener('click', async () => {
+    const amount = parseFloat(el('fin-amount').value);
+    const date = el('fin-date').value;
+    if (!amount || amount <= 0) { showToast('Enter a valid amount.','error'); return; }
+    if (!date) { showToast('Date is required.','error'); return; }
+    const btn = el('save-finance-btn');
+    btn.disabled = true; btn.querySelector('.btn-loader').classList.remove('hidden'); btn.querySelector('.btn-text').classList.add('hidden');
+    const data = {
+      type: currentFinType,
+      amount,
+      date,
+      category: el('fin-category').value.trim(),
+      paymentMethod: el('fin-payment-method').value,
+      companyId: el('fin-company').value,
+      project: el('fin-project').value.trim(),
+      description: el('fin-description').value.trim(),
+    };
+    if (currentFinType === 'accrual') {
+      data.accrualDirection = el('fin-accrual-direction').value;
+      data.status = el('fin-status').value;
+    } else {
+      data.status = null;
+      data.accrualDirection = null;
+    }
+    try {
+      const fid = el('finance-id').value;
+      if (fid) await updateFinanceEntry(fid, data);
+      else await createFinanceEntry(data);
+      hideModal('finance-modal-overlay');
+    } finally {
+      btn.disabled = false; btn.querySelector('.btn-loader').classList.add('hidden'); btn.querySelector('.btn-text').classList.remove('hidden');
+    }
+  });
+  el('finance-company-filter').addEventListener('change', renderFinance);
+  el('finance-type-filter').addEventListener('change', renderFinance);
+  el('finance-status-filter').addEventListener('change', renderFinance);
+  el('finance-month-filter').addEventListener('change', renderFinance);
+  el('export-finance-btn').addEventListener('click', exportFinanceCSV);
+
+  // Petty Cash
+  el('new-pettycash-btn').addEventListener('click', () => openPettyCashModal(null));
+  el('pettycash-close-btn').addEventListener('click', () => hideModal('pettycash-modal-overlay'));
+  el('pettycash-cancel-btn').addEventListener('click', () => hideModal('pettycash-modal-overlay'));
+  el('pettycash-modal-overlay').addEventListener('click', e => { if (e.target===el('pettycash-modal-overlay')) hideModal('pettycash-modal-overlay'); });
+  el('delete-pettycash-btn').addEventListener('click', async () => {
+    if (!currentPettyCashId || !confirm('Delete this petty cash transaction?')) return;
+    await deletePettyCashTx(currentPettyCashId);
+    hideModal('pettycash-modal-overlay');
+  });
+  el('save-pettycash-btn').addEventListener('click', async () => {
+    const amount = parseFloat(el('pc-amount').value);
+    const date = el('pc-date').value;
+    if (!amount || amount <= 0) { showToast('Enter a valid amount.','error'); return; }
+    if (!date) { showToast('Date is required.','error'); return; }
+    const btn = el('save-pettycash-btn');
+    btn.disabled = true; btn.querySelector('.btn-loader').classList.remove('hidden'); btn.querySelector('.btn-text').classList.add('hidden');
+    const data = {
+      txType: currentPcType,
+      amount,
+      date,
+      category: currentPcType==='expense' ? el('pc-category').value.trim() : '',
+      description: el('pc-description').value.trim(),
+    };
+    try {
+      const pid = el('pettycash-id').value;
+      if (pid) await updatePettyCashTx(pid, data);
+      else await createPettyCashTx(data);
+      hideModal('pettycash-modal-overlay');
+    } finally {
+      btn.disabled = false; btn.querySelector('.btn-loader').classList.add('hidden'); btn.querySelector('.btn-text').classList.remove('hidden');
+    }
+  });
+
   // Keyboard shortcuts
   document.addEventListener('keydown', e => {
-    if (e.key==='Escape') { hideModal('task-modal-overlay'); hideModal('note-modal-overlay'); hideModal('meeting-modal-overlay'); hideModal('company-modal-overlay'); hideModal('invite-modal-overlay'); }
+    if (e.key==='Escape') { hideModal('task-modal-overlay'); hideModal('note-modal-overlay'); hideModal('meeting-modal-overlay'); hideModal('company-modal-overlay'); hideModal('invite-modal-overlay'); hideModal('finance-modal-overlay'); hideModal('pettycash-modal-overlay'); }
     if ((e.ctrlKey||e.metaKey) && e.key==='n') { e.preventDefault(); openTask(null); }
   });
 }
@@ -1126,6 +1534,7 @@ window.switchView = function(name) {
   if (name==='companies') renderCompanies();
   if (name==='users') renderUsers();
   if (name==='reports') renderReports();
+  if (name==='finance') renderFinance();
 };
 
 // ─── Helpers ──────────────────────────────────────────────
