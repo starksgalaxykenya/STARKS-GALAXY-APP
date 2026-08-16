@@ -165,6 +165,13 @@ function subscribeNotes() {
   unsubs.push(onSnapshot(q, snap => {
     allNotes = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a,b) => ts(b)-ts(a));
     if (currentView === 'notes') renderNotes();
+    // Sticky-note counts live on Kanban cards, and the task modal's own
+    // sticky-notes section needs to stay in sync while it's open.
+    if (currentView === 'kanban') renderKanban(getFilteredTasks());
+    if (currentTaskId && !el('task-modal-overlay').classList.contains('hidden')) {
+      const t = allTasks.find(t => t.id === currentTaskId);
+      if (t) renderTaskNotes(t);
+    }
   }));
 }
 
@@ -213,7 +220,9 @@ function subscribeProjects() {
     renderProjectsSidebar();
     populateProjectFilter();
     populateProjectSelects();
+    populateFinanceProjectFilter();
     if (currentView === 'projects') renderProjectsGrid();
+    if (currentView === 'finance') renderFinance();
     const badge = el('nb-projects');
     if (badge) badge.textContent = allProjects.filter(p => !p.archived && matchesActiveCompany(p.companyId)).length;
   }, () => {}));
@@ -368,6 +377,7 @@ function buildCard(t) {
     else {dueLabel=`Due ${new Date(t.dueDate).toLocaleDateString('en-US',{month:'short',day:'numeric'})}`;}
   }
   const cc = (t.comments||[]).length;
+  const snc = allNotes.filter(n => n.taskId === t.id).length;
   return `<div class="task-card" data-id="${t.id}" draggable="true">
     <div class="card-top">
       <span class="card-title-text ${t.status==='completed'?'done-text':''}">${esc(t.title)}</span>
@@ -378,6 +388,7 @@ function buildCard(t) {
       ${dueLabel?`<span class="card-due ${dueCls}">${dueSvg}${dueLabel}</span>`:'<span></span>'}
       <div class="card-meta">
         ${projectNameFor(t)?`<span class="card-project">${esc(projectNameFor(t))}</span>`:''}
+        ${snc?`<span class="card-stickynotes" title="${snc} sticky note${snc>1?'s':''}">${stickySvg} ${snc}</span>`:''}
         ${cc?`<span class="card-comments">${commentSvg} ${cc}</span>`:''}
       </div>
     </div>
@@ -385,6 +396,7 @@ function buildCard(t) {
 }
 const dueSvg = `<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="3" y1="10" x2="21" y2="10"/></svg>`;
 const commentSvg = `<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>`;
+const stickySvg = `<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>`;
 
 // Drag & Drop
 let dragId = null;
@@ -510,16 +522,24 @@ function populateProjectFilter() {
 
 // Populates the task-modal project <select>, scoped to whichever company is
 // currently chosen in that same form (falls back to the active workspace company).
-function populateProjectSelects() {
-  const sel = el('f-project');
+// Populates a "project" <select> scoped to whichever company is currently
+// chosen in a paired company <select> — used by both the task form and the
+// finance entry form so picking a company narrows the project list to it.
+function populateCascadingProjectSelect(selectId, companySelectId) {
+  const sel = el(selectId);
   if (!sel) return;
-  const companyScope = el('f-company')?.value || '';
+  const companyScope = el(companySelectId)?.value || '';
   const cur = sel.value;
   const projects = allProjects
     .filter(p => !p.archived)
     .filter(p => companyScope ? p.companyId === companyScope : true)
     .sort((a,b) => (a.name||'').localeCompare(b.name||''));
   sel.innerHTML = '<option value="">No project</option>' + projects.map(p => `<option value="${p.id}" ${cur===p.id?'selected':''}>${esc(p.name)}</option>`).join('');
+}
+
+function populateProjectSelects() {
+  populateCascadingProjectSelect('f-project', 'f-company');
+  populateCascadingProjectSelect('fin-project', 'fin-company');
 }
 
 // ─── Companies ───────────────────────────────────────────
@@ -610,6 +630,7 @@ function populateCompanySelects() {
   const filterOpts = '<option value="">All Companies</option>' + allCompanies.map(c => `<option value="${c.id}">${esc(c.name)}</option>`).join('');
   const financeFilter = el('finance-company-filter');
   if (financeFilter) financeFilter.innerHTML = filterOpts;
+  populateFinanceProjectFilter();
   renderCompanySwitcher();
 }
 
@@ -683,6 +704,7 @@ function openProjectModal(id) {
   el('pr-name-input').value = p?.name || '';
   el('pr-company').value = p?.companyId || activeCompanyId || '';
   el('pr-desc').value = p?.description || '';
+  el('pr-budget').value = p?.budget || '';
   el('pr-color').value = p?.color || PROJECT_COLOR_PALETTE[allProjects.length % PROJECT_COLOR_PALETTE.length];
   el('pr-archived').checked = !!p?.archived;
   el('delete-project-btn').style.display = p ? 'flex' : 'none';
@@ -753,6 +775,7 @@ function renderNotes() {
   g.innerHTML = notes.map(n => {
     const preview = n.content ? n.content.replace(/<[^>]+>/g,'').substring(0,160) : '';
     const date = n.updatedAt?.toDate ? n.updatedAt.toDate().toLocaleDateString('en-US',{month:'short',day:'numeric'}) : '—';
+    const linkedTask = n.taskId ? allTasks.find(t => t.id === n.taskId) : null;
     return `<div class="note-card" data-id="${n.id}">
       <div class="note-card-color" style="background:${n.color||'#2563eb'}"></div>
       <div class="note-card-title">${esc(n.title||'Untitled')}</div>
@@ -760,9 +783,14 @@ function renderNotes() {
       <div class="note-card-meta">
         <span>${n.category||'general'}</span>·<span>${date}</span>
       </div>
+      ${linkedTask ? `<div class="note-card-task-chip" data-task-id="${linkedTask.id}"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="5" height="18" rx="1"/><rect x="10" y="3" width="5" height="12" rx="1"/><rect x="17" y="3" width="5" height="15" rx="1"/></svg> ${esc(linkedTask.title)}</div>` : ''}
     </div>`;
   }).join('');
-  el('notes-grid').querySelectorAll('.note-card').forEach(c => c.addEventListener('click', () => openNoteModal(c.dataset.id)));
+  el('notes-grid').querySelectorAll('.note-card').forEach(c => c.addEventListener('click', e => {
+    const chip = e.target.closest('.note-card-task-chip');
+    if (chip) { e.stopPropagation(); openTask(chip.dataset.taskId); return; }
+    openNoteModal(c.dataset.id);
+  }));
 }
 
 // ─── Meetings ────────────────────────────────────────────
@@ -927,16 +955,25 @@ function fmtMoney(n) {
 
 function getFilteredFinance() {
   const companyId = el('finance-company-filter')?.value || '';
+  const projectId = el('finance-project-filter')?.value || '';
+  return allFinance.filter(f => {
+    if (companyId && f.companyId !== companyId) return false;
+    if (projectId && f.projectId !== projectId) return false;
+    return matchesFinanceTypeStatusMonth(f);
+  });
+}
+
+// The type/status/month portion of the finance filters, split out so the
+// company/project roll-up charts can reuse it while ignoring the company
+// and project scope (which they vary themselves).
+function matchesFinanceTypeStatusMonth(f) {
   const type = el('finance-type-filter')?.value || '';
   const status = el('finance-status-filter')?.value || '';
   const month = el('finance-month-filter')?.value || '';
-  return allFinance.filter(f => {
-    if (companyId && f.companyId !== companyId) return false;
-    if (type && f.type !== type) return false;
-    if (status && (f.status||'na') !== status) return false;
-    if (month && (f.date||'').slice(0,7) !== month) return false;
-    return true;
-  });
+  if (type && f.type !== type) return false;
+  if (status && (f.status||'na') !== status) return false;
+  if (month && (f.date||'').slice(0,7) !== month) return false;
+  return true;
 }
 
 function computeFinanceStats(entries) {
@@ -965,9 +1002,112 @@ function renderFinance() {
 
   renderFinanceMonthlyChart(filtered);
   renderFinanceCategoryChart(filtered);
+  renderFinanceBudgetCard();
+  renderFinanceScopeChart();
   renderFinanceRecentList(filtered);
   renderFinanceTable(filtered);
   renderPettyCashTable(companyId);
+}
+
+// ─── Finance: Budgeting ──────────────────────────────────
+function renderFinanceBudgetCard() {
+  const card = el('finance-budget-card');
+  if (!card) return;
+  const companyId = el('finance-company-filter')?.value || '';
+  const projectId = el('finance-project-filter')?.value || '';
+  const monthKey = new Date().toISOString().slice(0,7);
+  const isThisMonthExpense = f => f.type === 'expense' && (f.date||'').slice(0,7) === monthKey;
+
+  if (projectId) {
+    const proj = allProjects.find(p => p.id === projectId);
+    if (!proj) { card.innerHTML = ''; return; }
+    const spend = allFinance.filter(f => f.projectId === projectId).filter(isThisMonthExpense).reduce((a,f)=>a+(Number(f.amount)||0),0);
+    card.innerHTML = budgetGaugeHtml(`${esc(proj.name)} — This Month's Budget`, spend, proj.budget || 0, 'pr-budget', proj.id, 'project');
+  } else if (companyId) {
+    const co = allCompanies.find(c => c.id === companyId);
+    if (!co) { card.innerHTML = ''; return; }
+    const spend = allFinance.filter(f => f.companyId === companyId).filter(isThisMonthExpense).reduce((a,f)=>a+(Number(f.amount)||0),0);
+    card.innerHTML = budgetGaugeHtml(`${esc(co.name)} — This Month's Budget`, spend, co.budget || 0, 'co-budget', co.id, 'company');
+  } else {
+    card.innerHTML = '<div class="card-header"><span class="card-title">Budget</span></div><div class="empty-state" style="padding:1rem 0">Pick a company (or project) above to see its monthly budget vs. actual spend.</div>';
+  }
+  card.querySelector('[data-edit-budget]')?.addEventListener('click', () => {
+    const kind = card.querySelector('[data-edit-budget]').dataset.kind;
+    const id = card.querySelector('[data-edit-budget]').dataset.id;
+    if (kind === 'project') openProjectModal(id); else openCompanyModal(id);
+  });
+}
+
+function budgetGaugeHtml(title, spend, budget, fieldId, entityId, kind) {
+  if (!budget) {
+    return `<div class="card-header"><span class="card-title">${title}</span></div>
+      <div class="empty-state" style="padding:1rem 0">No monthly budget set yet.
+        <button class="text-link" data-edit-budget data-kind="${kind}" data-id="${entityId}" style="background:none;border:none;cursor:pointer;font-weight:600">Set a budget →</button>
+      </div>`;
+  }
+  const pct = Math.round(spend/budget*100);
+  const over = spend > budget;
+  const cls = over ? 'over' : pct>=80 ? 'warn' : 'ok';
+  const color = over ? '#ef4444' : pct>=80 ? '#f59e0b' : '#22c55e';
+  return `
+    <div class="card-header"><span class="card-title">${title}</span><button class="text-link" data-edit-budget data-kind="${kind}" data-id="${entityId}" style="background:none;border:none;cursor:pointer;font-size:.75rem">Edit budget</button></div>
+    <div class="budget-gauge">
+      <div class="budget-gauge-row"><span>${fmtMoney(spend)} spent</span><span>${fmtMoney(budget)} budget</span></div>
+      <div class="progress-bar-wrap md"><div class="progress-bar-fill" style="width:${Math.min(100,pct)}%;background:${color}"></div></div>
+      <div class="budget-gauge-note ${cls}">${over ? `Over budget by ${fmtMoney(spend-budget)}` : `${fmtMoney(budget-spend)} remaining · ${pct}% used`}</div>
+    </div>`;
+}
+
+// ─── Finance: Roll-up chart (per-project → per-company) ──
+function renderFinanceScopeChart() {
+  const companyId = el('finance-company-filter')?.value || '';
+  const projectId = el('finance-project-filter')?.value || '';
+  const titleEl = el('finance-scope-chart-title');
+  if (projectId) {
+    // A single project is already fully scoped by the charts above it —
+    // here, show how its category spend compares within itself for context.
+    const proj = allProjects.find(p => p.id === projectId);
+    titleEl.textContent = `Category Breakdown — ${proj ? proj.name : 'Project'}`;
+    const entries = allFinance.filter(f => f.projectId === projectId && matchesFinanceTypeStatusMonth(f) && f.type === 'expense');
+    const byCat = {};
+    entries.forEach(f => { const c = f.category || 'Uncategorized'; byCat[c] = (byCat[c]||0) + (Number(f.amount)||0); });
+    const data = Object.entries(byCat).sort((a,b)=>b[1]-a[1]).map(([label,value],i) => ({ label, value, color: PROJECT_COLORS[i%PROJECT_COLORS.length] }));
+    renderBarChart('finance-scope-chart', data, fmtMoney);
+  } else if (companyId) {
+    const co = allCompanies.find(c => c.id === companyId);
+    titleEl.textContent = `Spend by Project — ${co ? co.name : 'Company'}`;
+    const entries = allFinance.filter(f => f.companyId === companyId && matchesFinanceTypeStatusMonth(f) && f.type === 'expense');
+    const byProj = {};
+    entries.forEach(f => {
+      const p = f.projectId ? allProjects.find(p => p.id === f.projectId) : null;
+      const label = p ? p.name : 'No project';
+      byProj[label] = (byProj[label]||0) + (Number(f.amount)||0);
+    });
+    const data = Object.entries(byProj).sort((a,b)=>b[1]-a[1]).map(([label,value],i) => ({ label, value, color: PROJECT_COLORS[i%PROJECT_COLORS.length] }));
+    renderBarChart('finance-scope-chart', data, fmtMoney);
+  } else {
+    titleEl.textContent = 'Spend by Company';
+    const entries = allFinance.filter(f => matchesFinanceTypeStatusMonth(f) && f.type === 'expense');
+    const byCo = {};
+    entries.forEach(f => {
+      const co = f.companyId ? allCompanies.find(c => c.id === f.companyId) : null;
+      const label = co ? co.name : 'No company';
+      byCo[label] = (byCo[label]||0) + (Number(f.amount)||0);
+    });
+    const data = Object.entries(byCo).sort((a,b)=>b[1]-a[1]).map(([label,value],i) => ({ label, value, color: PROJECT_COLORS[i%PROJECT_COLORS.length] }));
+    renderBarChart('finance-scope-chart', data, fmtMoney);
+  }
+}
+
+function populateFinanceProjectFilter() {
+  const sel = el('finance-project-filter');
+  if (!sel) return;
+  const companyId = el('finance-company-filter')?.value || '';
+  const cur = sel.value;
+  const projects = allProjects
+    .filter(p => !companyId || p.companyId === companyId)
+    .sort((a,b) => (a.name||'').localeCompare(b.name||''));
+  sel.innerHTML = '<option value="">All Projects</option>' + projects.map(p => `<option value="${p.id}" ${cur===p.id?'selected':''}>${esc(p.name)}</option>`).join('');
 }
 
 function renderFinanceMonthlyChart(entries) {
@@ -1004,30 +1144,36 @@ function renderFinanceRecentList(entries) {
   const listEl = el('finance-recent-list');
   const recent = entries.slice(0, 6);
   if (!recent.length) { listEl.innerHTML = '<div class="empty-state">No transactions yet.</div>'; return; }
-  listEl.innerHTML = recent.map(f => `
+  listEl.innerHTML = recent.map(f => {
+    const pname = f.projectId ? (allProjects.find(p=>p.id===f.projectId)?.name || '') : '';
+    return `
     <div class="finance-recent-row" data-id="${f.id}">
       <div>
         <div class="fin-recent-desc" style="font-weight:600;font-size:.875rem">${esc(f.description || f.category || capitalize(f.type))}</div>
-        <div style="font-size:.75rem;color:var(--text-muted)">${esc(f.date||'')} · ${esc(f.category||capitalize(f.type))}</div>
+        <div style="font-size:.75rem;color:var(--text-muted)">${esc(f.date||'')} · ${esc(f.category||capitalize(f.type))}${pname?` · 📁 ${esc(pname)}`:''}</div>
       </div>
       <span class="fin-amount ${f.type}">${f.type==='expense'?'-':'+'}${fmtMoney(f.amount)}</span>
-    </div>`).join('');
+    </div>`;
+  }).join('');
   listEl.querySelectorAll('.finance-recent-row').forEach(row => row.addEventListener('click', () => openFinanceModal(row.dataset.id)));
 }
 
 function renderFinanceTable(entries) {
   const listEl = el('finance-table-list');
   if (!entries.length) { listEl.innerHTML = '<div class="empty-state">No finance entries match your filters.</div>'; return; }
-  listEl.innerHTML = entries.map(f => `
+  listEl.innerHTML = entries.map(f => {
+    const pname = f.projectId ? (allProjects.find(p=>p.id===f.projectId)?.name || '') : '';
+    return `
     <div class="finance-table-row" data-id="${f.id}">
       <div style="font-size:.8125rem;color:var(--text-muted)">${esc(f.date||'')}</div>
-      <div style="font-weight:500">${esc(f.description || '—')}</div>
+      <div style="font-weight:500">${esc(f.description || '—')}${pname?`<div style="font-size:.7rem;font-weight:400;color:var(--text-light)">📁 ${esc(pname)}</div>`:''}</div>
       <div style="font-size:.8125rem;color:var(--text-muted)">${esc(f.category||'—')}</div>
       <div><span class="fin-type-badge ${f.type}">${f.type}</span></div>
       <div>${f.type==='accrual' ? `<span class="fin-status-badge ${f.status||'pending'}">${f.status||'pending'}</span>` : '<span class="fin-status-badge na">—</span>'}</div>
       <div class="fin-amount ${f.type}">${f.type==='expense'?'-':'+'}${fmtMoney(f.amount)}</div>
       <div>${(f.type==='accrual' && f.status==='pending') ? `<button class="icon-btn" title="Mark settled" data-settle="${f.id}"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg></button>` : ''}</div>
-    </div>`).join('');
+    </div>`;
+  }).join('');
   listEl.querySelectorAll('.finance-table-row').forEach(row => {
     row.addEventListener('click', e => {
       if (e.target.closest('[data-settle]')) return;
@@ -1099,7 +1245,8 @@ function openFinanceModal(id) {
     el('fin-category').value = f.category || '';
     el('fin-payment-method').value = f.paymentMethod || '';
     el('fin-company').value = f.companyId || '';
-    el('fin-project').value = f.project || '';
+    populateCascadingProjectSelect('fin-project', 'fin-company');
+    el('fin-project').value = f.projectId || '';
     el('fin-description').value = f.description || '';
     el('fin-accrual-direction').value = f.accrualDirection || 'receivable';
     el('fin-status').value = f.status || 'pending';
@@ -1110,8 +1257,9 @@ function openFinanceModal(id) {
     el('fin-date').value = new Date().toISOString().split('T')[0];
     el('fin-category').value = '';
     el('fin-payment-method').value = '';
-    el('fin-company').value = '';
-    el('fin-project').value = '';
+    el('fin-company').value = el('finance-company-filter')?.value || activeCompanyId || '';
+    populateCascadingProjectSelect('fin-project', 'fin-company');
+    el('fin-project').value = el('finance-project-filter')?.value || '';
     el('fin-description').value = '';
     el('fin-accrual-direction').value = 'receivable';
     el('fin-status').value = 'pending';
@@ -1177,7 +1325,8 @@ function exportFinanceCSV() {
   const entries = getFilteredFinance();
   const headers = ['Date','Type','Status','Category','Description','Amount','Payment Method','Company','Project'];
   const companyName = id => allCompanies.find(c=>c.id===id)?.name || '';
-  const rows = entries.map(f => [f.date||'', f.type, f.status||'', f.category||'', f.description||'', f.amount||0, f.paymentMethod||'', companyName(f.companyId), f.project||''].map(v=>`"${String(v).replace(/"/g,'""')}"`).join(','));
+  const projectName = f => f.projectId ? (allProjects.find(p=>p.id===f.projectId)?.name || f.project || '') : (f.project || '');
+  const rows = entries.map(f => [f.date||'', f.type, f.status||'', f.category||'', f.description||'', f.amount||0, f.paymentMethod||'', companyName(f.companyId), projectName(f)].map(v=>`"${String(v).replace(/"/g,'""')}"`).join(','));
   const csv = [headers.join(','), ...rows].join('\n');
   const a = document.createElement('a');
   a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
@@ -1230,6 +1379,7 @@ function openTask(id, defaultStatus='todo') {
     renderAttachments(task);
     renderComments(task);
     renderActivityLog(task);
+    renderTaskNotes(task);
     showView_modal(false);
     el('modal-edit-btn').style.display='flex';
     el('modal-delete-btn').style.display='flex';
@@ -1307,18 +1457,67 @@ function renderActivityLog(task) {
     </div>`).join('') || '<div style="color:var(--text-light);font-size:.8125rem">No activity yet.</div>';
 }
 
+// ─── Sticky Notes (linked to a task) ──────────────────────
+function renderTaskNotes(task) {
+  const listEl = el('task-notes-list');
+  if (!listEl || !task) return;
+  const linked = allNotes.filter(n => n.taskId === task.id);
+  listEl.innerHTML = linked.length ? linked.map(n => `
+    <div class="sticky-note-chip" style="background:${n.color||'#2563eb'}18;border-color:${n.color||'#2563eb'}55" data-id="${n.id}">
+      <button class="sticky-note-unlink" data-id="${n.id}" title="Unlink from this task">&times;</button>
+      <div class="sticky-note-chip-title">${esc(n.title||'Untitled')}</div>
+      <div class="sticky-note-chip-preview">${esc(stripHtml(n.content).slice(0,90)) || 'No content'}</div>
+    </div>`).join('') : '<span style="font-size:.8125rem;color:var(--text-light)">No sticky notes attached yet.</span>';
+  listEl.querySelectorAll('.sticky-note-chip').forEach(chip => {
+    chip.addEventListener('click', e => {
+      if (e.target.closest('.sticky-note-unlink')) return;
+      openNoteModal(chip.dataset.id);
+    });
+  });
+  listEl.querySelectorAll('.sticky-note-unlink').forEach(btn => {
+    btn.addEventListener('click', async e => {
+      e.stopPropagation();
+      try { await updateDoc(doc(db,'notes',btn.dataset.id), { taskId: null }); showToast('Note unlinked.','warning'); }
+      catch { showToast('Failed to unlink.','error'); }
+    });
+  });
+  populateLinkNoteSelect(task.id);
+}
+
+function populateLinkNoteSelect(taskId) {
+  const sel = el('link-note-select');
+  if (!sel) return;
+  const linkable = allNotes.filter(n => !n.taskId || n.taskId === taskId).filter(n => n.taskId !== taskId);
+  sel.innerHTML = '<option value="">Link an existing note…</option>' + linkable.map(n => `<option value="${n.id}">${esc(n.title||'Untitled')}</option>`).join('');
+}
+
 // ─── Note Modal ──────────────────────────────────────────
-function openNoteModal(id) {
+function openNoteModal(id, prefillTaskId) {
   currentNoteId = id || null;
   const note = id ? allNotes.find(n => n.id === id) : null;
   el('note-modal-title').textContent = note ? 'Edit Note' : 'New Note';
   el('note-id').value = note?.id || '';
   el('note-title').value = note?.title || '';
-  el('note-category').value = note?.category || 'general';
+  el('note-category').value = note?.category || (prefillTaskId ? 'project' : 'general');
   el('note-color').value = note?.color || '#2563eb';
   el('note-content').innerHTML = note?.content || '';
   el('delete-note-btn').style.display = note ? 'flex' : 'none';
+  const taskId = note ? (note.taskId || '') : (prefillTaskId || '');
+  el('note-task-id').value = taskId;
+  updateNoteTaskBanner(taskId);
   showModal('note-modal-overlay');
+}
+
+function updateNoteTaskBanner(taskId) {
+  const banner = el('note-task-link-banner');
+  if (!banner) return;
+  if (taskId) {
+    const t = allTasks.find(t => t.id === taskId);
+    el('note-task-link-title').textContent = t ? t.title : 'Untitled task';
+    banner.classList.remove('hidden');
+  } else {
+    banner.classList.add('hidden');
+  }
 }
 
 // ─── Meeting Modal ───────────────────────────────────────
@@ -1351,6 +1550,7 @@ function openCompanyModal(id) {
   el('co-website').value = co?.website || '';
   el('co-desc').value = co?.description || '';
   el('co-color').value = co?.color || '#2563eb';
+  el('co-budget').value = co?.budget || '';
   showModal('company-modal-overlay');
 }
 
@@ -1517,7 +1717,7 @@ function bindGlobalEvents() {
     if (!title) { showToast('Note needs a title.','error'); return; }
     const btn = el('save-note-btn');
     btn.disabled = true; btn.querySelector('.btn-loader').classList.remove('hidden'); btn.querySelector('.btn-text').classList.add('hidden');
-    const data = { title, category: el('note-category').value, color: el('note-color').value, content: el('note-content').innerHTML, createdBy: currentUser.uid, updatedAt: serverTimestamp() };
+    const data = { title, category: el('note-category').value, color: el('note-color').value, content: el('note-content').innerHTML, taskId: el('note-task-id').value || null, createdBy: currentUser.uid, updatedAt: serverTimestamp() };
     try {
       const nid = el('note-id').value;
       if (nid) await updateDoc(doc(db,'notes',nid), data);
@@ -1526,8 +1726,29 @@ function bindGlobalEvents() {
     } catch { showToast('Save failed.','error'); }
     finally { btn.disabled=false; btn.querySelector('.btn-loader').classList.add('hidden'); btn.querySelector('.btn-text').classList.remove('hidden'); }
   });
+  el('note-task-unlink-btn').addEventListener('click', async () => {
+    const nid = el('note-id').value;
+    if (nid) {
+      try { await updateDoc(doc(db,'notes',nid), { taskId: null }); showToast('Note unlinked.','warning'); } catch { showToast('Failed to unlink.','error'); }
+    }
+    el('note-task-id').value = '';
+    updateNoteTaskBanner('');
+  });
   document.querySelectorAll('.editor-btn').forEach(btn => {
     btn.addEventListener('click', () => { document.execCommand(btn.dataset.cmd, false, null); btn.classList.toggle('active'); });
+  });
+
+  // Sticky notes linked to the currently open task
+  el('new-sticky-note-btn').addEventListener('click', () => {
+    if (!currentTaskId) { showToast('Save the task first.','warning'); return; }
+    openNoteModal(null, currentTaskId);
+  });
+  el('link-note-btn').addEventListener('click', async () => {
+    const nid = el('link-note-select').value;
+    if (!nid || !currentTaskId) return;
+    try { await updateDoc(doc(db,'notes',nid), { taskId: currentTaskId }); showToast('Note linked!','success'); }
+    catch { showToast('Failed to link note.','error'); }
+    el('link-note-select').value = '';
   });
 
   // Meetings
@@ -1563,7 +1784,7 @@ function bindGlobalEvents() {
     if (!name) { showToast('Company name required.','error'); return; }
     const btn = el('save-company-btn');
     btn.disabled=true; btn.querySelector('.btn-loader').classList.remove('hidden'); btn.querySelector('.btn-text').classList.add('hidden');
-    const data = { name, industry: el('co-industry').value, website: el('co-website').value, description: el('co-desc').value, color: el('co-color').value, createdBy: currentUser.uid };
+    const data = { name, industry: el('co-industry').value, website: el('co-website').value, description: el('co-desc').value, color: el('co-color').value, budget: parseFloat(el('co-budget').value) || 0, createdBy: currentUser.uid };
     try {
       const cid = el('company-id').value;
       if (cid) await updateDoc(doc(db,'companies',cid), data);
@@ -1614,7 +1835,7 @@ function bindGlobalEvents() {
     if (!name) { showToast('Project name required.','error'); return; }
     const btn = el('save-project-btn');
     btn.disabled=true; btn.querySelector('.btn-loader').classList.remove('hidden'); btn.querySelector('.btn-text').classList.add('hidden');
-    const data = { name, companyId: el('pr-company').value, description: el('pr-desc').value.trim(), color: el('pr-color').value, archived: el('pr-archived').checked };
+    const data = { name, companyId: el('pr-company').value, description: el('pr-desc').value.trim(), color: el('pr-color').value, budget: parseFloat(el('pr-budget').value) || 0, archived: el('pr-archived').checked };
     try {
       const pid = el('project-id').value;
       if (pid) await updateProject(pid, data);
@@ -1731,14 +1952,19 @@ function bindGlobalEvents() {
     if (!date) { showToast('Date is required.','error'); return; }
     const btn = el('save-finance-btn');
     btn.disabled = true; btn.querySelector('.btn-loader').classList.remove('hidden'); btn.querySelector('.btn-text').classList.add('hidden');
+    const finProjectId = el('fin-project').value;
+    const finProj = finProjectId ? allProjects.find(p => p.id === finProjectId) : null;
+    // A chosen project owns the company relationship, same rule as tasks.
+    const finCompanyId = finProj ? (finProj.companyId || '') : el('fin-company').value;
     const data = {
       type: currentFinType,
       amount,
       date,
       category: el('fin-category').value.trim(),
       paymentMethod: el('fin-payment-method').value,
-      companyId: el('fin-company').value,
-      project: el('fin-project').value.trim(),
+      companyId: finCompanyId,
+      projectId: finProjectId || null,
+      project: finProj ? finProj.name : '',
       description: el('fin-description').value.trim(),
     };
     if (currentFinType === 'accrual') {
@@ -1757,7 +1983,15 @@ function bindGlobalEvents() {
       btn.disabled = false; btn.querySelector('.btn-loader').classList.add('hidden'); btn.querySelector('.btn-text').classList.remove('hidden');
     }
   });
-  el('finance-company-filter').addEventListener('change', renderFinance);
+  // Cascading Company ↔ Project fields in the finance form, mirroring the task form.
+  el('fin-company').addEventListener('change', () => populateCascadingProjectSelect('fin-project', 'fin-company'));
+  el('fin-project').addEventListener('change', () => {
+    const pid = el('fin-project').value;
+    const proj = pid ? allProjects.find(p => p.id === pid) : null;
+    if (proj) el('fin-company').value = proj.companyId || '';
+  });
+  el('finance-company-filter').addEventListener('change', () => { populateFinanceProjectFilter(); renderFinance(); });
+  el('finance-project-filter').addEventListener('change', renderFinance);
   el('finance-type-filter').addEventListener('change', renderFinance);
   el('finance-status-filter').addEventListener('change', renderFinance);
   el('finance-month-filter').addEventListener('change', renderFinance);
@@ -1867,6 +2101,7 @@ function showToast(msg, type='') {
 }
 
 function esc(s) { if(!s)return''; return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function stripHtml(html) { if(!html) return ''; return String(html).replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').trim(); }
 function el(id) { return document.getElementById(id); }
 function ts(obj) { return obj?.createdAt?.toMillis?.() || 0; }
 function today() { const d=new Date(); d.setHours(0,0,0,0); return d; }
