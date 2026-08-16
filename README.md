@@ -1,3 +1,4 @@
+[README.md](https://github.com/user-attachments/files/31116699/README.md)
 # TaskFlow – Setup & Deployment Guide
 
 ## Overview
@@ -112,6 +113,34 @@ To avoid index errors, create a composite index:
 
 Alternatively, run the app and click the link in the browser console error — Firebase will create it automatically.
 
+The `projects` collection does not need a composite index (it's queried as a
+plain collection scan client-side).
+
+---
+
+## 5b. Companies & Projects Workflow (new)
+
+The app now has real **Company** and **Project** entities, not just free-text labels:
+
+- **Companies** (`companies` collection) are top-level workspaces. Click the
+  workspace pill at the top of the sidebar to switch between "All Companies"
+  and a specific company — this filters tasks, projects, boards, the
+  dashboard, calendar and reports to just that company. Your choice is saved
+  in the browser (localStorage) so it persists across reloads.
+- **Projects** (`projects` collection) belong to a company and are where
+  tasks live. Each project gets its own Kanban board: open **Projects** in
+  the sidebar, click a project card ("Open Board"), and you're in a board
+  scoped to just that project's tasks — drag-and-drop works exactly like the
+  main Kanban board, just filtered down.
+- **Tasks** now store `projectId` (which project they belong to) and
+  `companyId` (auto-derived from the project, or set directly if the task
+  has no project). Old tasks created before this update — which only had a
+  free-text `project` field — still display fine; they just won't show up
+  when filtering by a specific project until you edit them and assign one.
+
+Admins/managers can see and switch into every company; other roles only see
+companies they've been added to (via **User Management → Assign to Company**).
+
 ---
 
 ## 6. Local Development
@@ -199,6 +228,8 @@ taskflow/
 |---|---|
 | Email authentication | ✅ |
 | Password reset | ✅ |
+| Companies (multi-company workspaces, switchable) | ✅ |
+| Projects (linked to companies, own board each) | ✅ |
 | Kanban board with drag & drop | ✅ |
 | Task CRUD (create, edit, delete) | ✅ |
 | Task comments | ✅ |
@@ -206,7 +237,7 @@ taskflow/
 | Dashboard stats | ✅ |
 | Calendar view | ✅ |
 | Search | ✅ |
-| Filters (priority, project) | ✅ |
+| Filters (priority, project, company) | ✅ |
 | Dark mode | ✅ |
 | Notifications (overdue/upcoming) | ✅ |
 | Recurring tasks (flag) | ✅ |
