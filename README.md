@@ -1,4 +1,4 @@
-[README.md](https://github.com/user-attachments/files/31116699/README.md)
+[README.md](https://github.com/user-attachments/files/31119199/README.md)
 # TaskFlow – Setup & Deployment Guide
 
 ## Overview
@@ -143,6 +143,52 @@ companies they've been added to (via **User Management → Assign to Company**).
 
 ---
 
+## 5c. Sticky Notes on Board Items (new)
+
+Notes can now be attached to a specific task so you can jump between the
+board and your notes:
+
+- Open any task → **Sticky Notes** section → **New sticky note** creates a
+  note pre-linked to that task, or **Link an existing note** attaches one
+  you already wrote (only notes not already linked to another task show up).
+- Linked notes appear as small colored preview chips on the task — click one
+  to open/edit it, or the × to unlink without deleting it.
+- The note itself shows a "Linked to task: …" banner with its own unlink
+  button, and the main **Notes** grid shows a small chip on any note that's
+  linked, which jumps straight back to that task.
+- Kanban cards show a sticky-note count badge so you can see at a glance
+  which tasks have notes attached, without opening them.
+
+This all lives on the `notes` collection via a new optional `taskId` field —
+no new Firestore rules needed, it's covered by the existing notes rules.
+
+---
+
+## 5d. Finance: Per-Project & Per-Company + Budgets (new)
+
+Finance entries can now be tied to a project (which rolls up into its
+company), and both companies and projects can carry a monthly budget:
+
+- The **New Finance Entry** form's Project field is now a dropdown (cascades
+  with Company, same as the task form) instead of free text.
+- On the **Finance** page, a new **Project** filter sits next to the existing
+  **Company** filter — narrow down to a single project's income/expenses, a
+  whole company's (including all its projects), or leave both on "All" for
+  the org-wide picture.
+- A **Budget** card shows this month's spend vs. the budget you set on the
+  company or project (edit it from **Companies**/**Projects**, or the "Edit
+  budget" link directly on the card) — with a progress bar that goes amber
+  at 80% and red once over budget.
+- A **Spend Breakdown** chart adapts to your scope: comparing all companies
+  when nothing is selected, comparing all of a company's projects once you
+  pick a company, or a category breakdown once you drill into one project.
+
+This uses the existing `financeEntries` collection (new optional `projectId`
+field) plus a new optional `budget` number field on `companies` and
+`projects` — again, no rule changes required.
+
+---
+
 ## 6. Local Development
 
 Since the app uses ES Modules, you need a local server (not `file://`):
@@ -230,6 +276,8 @@ taskflow/
 | Password reset | ✅ |
 | Companies (multi-company workspaces, switchable) | ✅ |
 | Projects (linked to companies, own board each) | ✅ |
+| Sticky notes linked/attached to tasks | ✅ |
+| Per-project & per-company finance + budgets | ✅ |
 | Kanban board with drag & drop | ✅ |
 | Task CRUD (create, edit, delete) | ✅ |
 | Task comments | ✅ |
