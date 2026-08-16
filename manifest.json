@@ -1,43 +1,80 @@
 {
-  "name": "STARKS-GALAXY-APP",
+  "id": "./",
+  "name": "Starks Galaxy — Task, Project & Finance Workspace",
   "short_name": "StarksGalaxy",
+  "description": "Manage companies, projects, boards, tasks, notes, meetings, time tracking and finances in one workspace.",
   "start_url": "./index.html",
+  "scope": "./",
   "display": "standalone",
-  "background_color": "#ffffff",
+  "display_override": ["window-controls-overlay", "standalone"],
+  "background_color": "#0d1424",
   "theme_color": "#000000",
   "orientation": "portrait",
+  "lang": "en",
+  "dir": "ltr",
+  "categories": ["business", "productivity"],
   "icons": [
     {
-      "src": "./ICONS/launchericon-48x48.png",
+      "src": "./icons/launchericon-48x48.png",
       "sizes": "48x48",
-      "type": "image/png"
+      "type": "image/png",
+      "purpose": "any"
     },
     {
-      "src": "./ICONS/launchericon-72x72.png",
+      "src": "./icons/launchericon-72x72.png",
       "sizes": "72x72",
-      "type": "image/png"
+      "type": "image/png",
+      "purpose": "any"
     },
     {
-      "src": "./ICONS/launchericon-96x96.png",
+      "src": "./icons/launchericon-96x96.png",
       "sizes": "96x96",
-      "type": "image/png"
+      "type": "image/png",
+      "purpose": "any"
     },
     {
-      "src": "./ICONS/launchericon-144x144.png",
+      "src": "./icons/launchericon-144x144.png",
       "sizes": "144x144",
-      "type": "image/png"
+      "type": "image/png",
+      "purpose": "any"
     },
     {
-      "src": "./ICONS/launchericon-192x192.png",
+      "src": "./icons/launchericon-192x192.png",
       "sizes": "192x192",
       "type": "image/png",
-      "purpose": "any maskable"
+      "purpose": "any"
     },
     {
-      "src": "./ICONS/launchericon-512x512.png",
+      "src": "./icons/launchericon-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "./icons/launchericon-512x512.png",
       "sizes": "512x512",
       "type": "image/png",
-      "purpose": "any maskable"
+      "purpose": "any"
+    },
+    {
+      "src": "./icons/launchericon-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "New Task",
+      "short_name": "New Task",
+      "url": "./dashboard.html?action=new-task",
+      "icons": [{ "src": "./icons/launchericon-96x96.png", "sizes": "96x96" }]
+    },
+    {
+      "name": "Kanban Board",
+      "short_name": "Board",
+      "url": "./dashboard.html?view=kanban",
+      "icons": [{ "src": "./icons/launchericon-96x96.png", "sizes": "96x96" }]
     }
   ]
 }
