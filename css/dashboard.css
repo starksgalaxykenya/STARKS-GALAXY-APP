@@ -740,6 +740,7 @@
 .card-meta { display: flex; gap: .375rem; align-items: center; }
 .card-project { font-size: .7rem; background: var(--primary-light); color: var(--primary); padding: .15rem .5rem; border-radius: 99px; font-weight: 600; }
 .card-comments { display: flex; align-items: center; gap: .2rem; font-size: .7rem; color: var(--text-light); }
+.card-stickynotes { display: flex; align-items: center; gap: .2rem; font-size: .7rem; color: var(--text-light); }
 
 .add-card-btn {
   background: transparent;
@@ -1013,6 +1014,21 @@
 .fin-amount.expense { color: var(--red); }
 .fin-amount.accrual { color: var(--purple); }
 
+/* ─── BUDGET GAUGE (per company / per project) ───────────── */
+.budget-gauge { padding-top: .25rem; }
+.budget-gauge-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: .875rem;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: .5rem;
+}
+.budget-gauge-note { font-size: .78rem; margin-top: .5rem; font-weight: 500; }
+.budget-gauge-note.ok { color: var(--green); }
+.budget-gauge-note.warn { color: var(--amber); }
+.budget-gauge-note.over { color: var(--red); }
+
 .project-tag {
   display: inline-flex;
   align-items: center;
@@ -1217,6 +1233,95 @@
   font-family: var(--font-body);
 }
 .upload-label:hover { border-color: var(--primary); color: var(--primary); background: var(--primary-light); }
+
+/* Sticky notes attached to a task */
+.sticky-notes-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .625rem;
+  margin-bottom: .625rem;
+}
+.sticky-note-chip {
+  position: relative;
+  width: 168px;
+  padding: .625rem .75rem .5rem;
+  border: 1px solid;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: transform var(--transition), box-shadow var(--transition);
+  box-shadow: 0 1px 2px rgba(0,0,0,.05);
+}
+.sticky-note-chip:hover { transform: translateY(-2px) rotate(-.5deg); box-shadow: var(--shadow); }
+.sticky-note-chip-title {
+  font-weight: 700;
+  font-size: .8125rem;
+  color: var(--text);
+  margin-bottom: .25rem;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  padding-right: 1rem;
+}
+.sticky-note-chip-preview {
+  font-size: .72rem;
+  color: var(--text-muted);
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.sticky-note-unlink {
+  position: absolute;
+  top: .35rem; right: .4rem;
+  width: 16px; height: 16px;
+  border: none; background: rgba(0,0,0,.08);
+  border-radius: 50%;
+  color: var(--text-muted);
+  font-size: .75rem;
+  line-height: 1;
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+}
+.sticky-note-unlink:hover { background: rgba(239,68,68,.2); color: #ef4444; }
+.sticky-note-controls {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  flex-wrap: wrap;
+  margin-bottom: 1rem;
+}
+.filter-select.sm { padding: .4rem .6rem; font-size: .78rem; }
+.btn-ghost.sm { padding: .35rem .7rem; font-size: .78rem; display: inline-flex; align-items: center; gap: .3rem; }
+
+/* Note ↔ task link banner (inside note modal) */
+.note-task-link-banner {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  background: var(--primary-light);
+  color: var(--primary);
+  border: 1px solid rgba(37,99,235,.25);
+  border-radius: var(--radius-sm);
+  padding: .5rem .75rem;
+  font-size: .8125rem;
+  margin-bottom: .875rem;
+}
+.note-task-link-banner span { flex: 1; }
+.note-task-link-banner strong { font-weight: 700; }
+
+/* Note ↔ task link chip on the notes grid card */
+.note-card-task-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: .3rem;
+  font-size: .7rem;
+  font-weight: 600;
+  color: var(--primary);
+  background: var(--primary-light);
+  padding: .2rem .55rem;
+  border-radius: 99px;
+  margin-top: .5rem;
+  align-self: flex-start;
+}
 
 /* Comments */
 .comments-list { display: flex; flex-direction: column; gap: .875rem; margin-bottom: 1rem; }
