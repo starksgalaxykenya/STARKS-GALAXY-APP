@@ -25,14 +25,19 @@ let allMeetings = [];
 let allTimeLogs = [];
 let allUsers = [];
 let allCompanies = [];
+let allProjects = [];
 let allFinance = [];
 let allPettyCash = [];
 let currentTaskId = null;
 let currentNoteId = null;
 let currentMeetingId = null;
 let currentCompanyId = null;
+let currentProjectId = null;
 let currentFinanceId = null;
 let currentPettyCashId = null;
+// The active workspace filter — restricts tasks/projects/boards to one company,
+// or null/'' for "All Companies". Persisted so the choice survives a reload.
+let activeCompanyId = localStorage.getItem('sg-active-company') || '';
 let currentFinType = 'income';
 let currentPcType = 'topup';
 let currentView = 'dashboard';
@@ -47,6 +52,13 @@ const FIN_CATEGORIES = {
   expense: ['Rent','Utilities','Salaries','Supplies','Marketing','Travel','Software/Subscriptions','Professional Fees','Maintenance','Other Expense'],
   accrual: ['Sales','Consulting','Rent','Utilities','Salaries','Professional Fees','Other']
 };
+
+// Returns true if the given companyId belongs to the active workspace filter
+// (or if there is no active filter, i.e. "All Companies" is selected).
+function matchesActiveCompany(companyId) {
+  if (!activeCompanyId) return true;
+  return companyId === activeCompanyId;
+}
 
 // ─── Auth Guard ────────────────────────────────────────────
 onAuthStateChanged(auth, async (user) => {
@@ -107,6 +119,7 @@ function subscribeAll() {
   subscribeTimeLogs();
   subscribeUsers();
   subscribeCompanies();
+  subscribeProjects();
   subscribeFinance();
   subscribePettyCash();
 }
@@ -193,6 +206,19 @@ function subscribeCompanies() {
   }));
 }
 
+function subscribeProjects() {
+  const q = query(collection(db, 'projects'));
+  unsubs.push(onSnapshot(q, snap => {
+    allProjects = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    renderProjectsSidebar();
+    populateProjectFilter();
+    populateProjectSelects();
+    if (currentView === 'projects') renderProjectsGrid();
+    const badge = el('nb-projects');
+    if (badge) badge.textContent = allProjects.filter(p => !p.archived && matchesActiveCompany(p.companyId)).length;
+  }, () => {}));
+}
+
 function subscribeFinance() {
   const q = query(collection(db, 'financeEntries'));
   unsubs.push(onSnapshot(q, snap => {
@@ -221,7 +247,8 @@ function renderTasks() {
   renderAllTasksTable(filtered);
   if (currentView === 'calendar') renderCalendar();
   if (currentView === 'reports') renderReports();
-  renderProjects();
+  if (currentView === 'projects') renderProjectsGrid();
+  renderProjectsSidebar();
   populateProjectFilter();
 }
 
@@ -229,10 +256,21 @@ function getFilteredTasks() {
   const prio = el('filter-priority')?.value || '';
   const proj = el('filter-project')?.value || '';
   return allTasks.filter(t => {
+    if (!matchesActiveCompany(t.companyId)) return false;
     if (prio && t.priority !== prio) return false;
-    if (proj && t.project !== proj) return false;
+    if (proj && t.projectId !== proj) return false;
     return true;
   });
+}
+
+// Resolve a task's project display name — prefers the linked project entity,
+// falls back to the legacy free-text label for tasks created before projects existed.
+function projectNameFor(t) {
+  if (t.projectId) {
+    const p = allProjects.find(p => p.id === t.projectId);
+    if (p) return p.name;
+  }
+  return t.project || '';
 }
 
 // ─── Stats ──────────────────────────────────────────────
@@ -288,7 +326,7 @@ window.toggleTaskDone = async (id) => {
 // ─── Kanban ───────────────────────────────────────────────
 function renderKanban(tasks) {
   const kpf = el('kanban-project-filter')?.value || '';
-  const filtered = kpf ? tasks.filter(t => t.project === kpf) : tasks;
+  const filtered = kpf ? tasks.filter(t => t.projectId === kpf) : tasks;
   ['todo','inprogress','review','completed'].forEach(status => {
     const col = el(`col-${status}`);
     const colTasks = filtered.filter(t => t.status === status);
@@ -300,8 +338,24 @@ function renderKanban(tasks) {
     });
     initDrop(col);
   });
-  el('kanban-subtitle').textContent = kpf ? `Project: ${kpf}` : `All Projects · ${filtered.length} tasks`;
+  if (kpf) {
+    const proj = allProjects.find(p => p.id === kpf);
+    const co = proj && allCompanies.find(c => c.id === proj.companyId);
+    el('kanban-subtitle').textContent = `${proj ? proj.name : 'Project'}${co ? ' · ' + co.name : ''} · ${filtered.length} tasks`;
+  } else {
+    el('kanban-subtitle').textContent = `${activeCompanyId ? (allCompanies.find(c=>c.id===activeCompanyId)?.name || 'Company') : 'All Companies'} · All Projects · ${filtered.length} tasks`;
+  }
 }
+
+// Jump straight to a project's own board — this is what "boards per project" means
+// in practice: the shared Kanban view, scoped down to just this project's tasks.
+window.openProjectBoard = function(projectId) {
+  const sel = el('kanban-project-filter');
+  if (sel) sel.value = projectId;
+  switchView('kanban');
+  renderKanban(getFilteredTasks());
+  if (window.innerWidth <= 768) closeSidebar();
+};
 
 function buildCard(t) {
   const now = today();
@@ -323,7 +377,7 @@ function buildCard(t) {
     <div class="card-footer">
       ${dueLabel?`<span class="card-due ${dueCls}">${dueSvg}${dueLabel}</span>`:'<span></span>'}
       <div class="card-meta">
-        ${t.project?`<span class="card-project">${esc(t.project)}</span>`:''}
+        ${projectNameFor(t)?`<span class="card-project">${esc(projectNameFor(t))}</span>`:''}
         ${cc?`<span class="card-comments">${commentSvg} ${cc}</span>`:''}
       </div>
     </div>
@@ -357,13 +411,14 @@ function renderAllTasksTable(tasks) {
   if (!tasks.length) { listEl.innerHTML = '<div class="empty-state" style="padding:3rem">No tasks. Create your first task!</div>'; return; }
   listEl.innerHTML = tasks.map(t => {
     const due = t.dueDate ? new Date(t.dueDate).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : '—';
+    const pname = projectNameFor(t);
     return `<div class="task-table-row" data-id="${t.id}">
       <button class="task-check-btn ${t.status==='completed'?'done':''}" onclick="event.stopPropagation();toggleTaskDone('${t.id}')"></button>
-      <div style="overflow:hidden"><div style="font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;${t.status==='completed'?'text-decoration:line-through;color:var(--text-light)':''}">${esc(t.title)}</div><div style="font-size:.75rem;color:var(--text-light);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${t.project?`📁 ${esc(t.project)}`:''}</div></div>
+      <div style="overflow:hidden"><div style="font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;${t.status==='completed'?'text-decoration:line-through;color:var(--text-light)':''}">${esc(t.title)}</div><div style="font-size:.75rem;color:var(--text-light);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${pname?`📁 ${esc(pname)}`:''}</div></div>
       <div><span class="priority-badge ${t.priority||'low'}">${t.priority||'low'}</span></div>
       <div><span class="status-badge ${t.status||'todo'}">${statusLabel(t.status)}</span></div>
       <div style="color:var(--text-muted);font-size:.8125rem">${due}</div>
-      <div>${t.project?`<span class="project-tag">${esc(t.project)}</span>`:''}</div>
+      <div>${pname?`<span class="project-tag">${esc(pname)}</span>`:''}</div>
       <div><button class="icon-btn icon-btn-danger" onclick="event.stopPropagation();confirmDelete('${t.id}')" title="Delete"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/></svg></button></div>
     </div>`;
   }).join('');
@@ -417,30 +472,54 @@ function renderCalendar() {
 }
 
 // ─── Projects Sidebar ────────────────────────────────────
-function renderProjects() {
-  const projects = [...new Set(allTasks.map(t => t.project).filter(Boolean))];
-  el('project-list').innerHTML = projects.map((p,i) =>
-    `<div class="project-item" data-project="${esc(p)}">
-      <div class="project-dot" style="background:${PROJECT_COLORS[i%PROJECT_COLORS.length]}"></div>
-      <span>${esc(p)}</span>
-    </div>`).join('');
+function renderProjectsSidebar() {
+  const projects = allProjects
+    .filter(p => !p.archived && matchesActiveCompany(p.companyId))
+    .sort((a,b) => (a.name||'').localeCompare(b.name||''));
+  el('project-list').innerHTML = projects.length ? projects.map((p,i) =>
+    `<div class="project-item" data-id="${p.id}">
+      <div class="project-dot" style="background:${p.color||PROJECT_COLORS[i%PROJECT_COLORS.length]}"></div>
+      <span>${esc(p.name)}</span>
+    </div>`).join('') : '<div style="padding:.5rem .875rem;font-size:.75rem;color:rgba(255,255,255,.3)">No projects yet</div>';
   el('project-list').querySelectorAll('.project-item').forEach(item => {
-    item.addEventListener('click', () => {
-      el('filter-project').value = item.dataset.project;
-      renderTasks();
-      if (window.innerWidth <= 768) closeSidebar();
-    });
+    item.addEventListener('click', () => openProjectBoard(item.dataset.id));
   });
+  const scopeEl = el('sidebar-projects-scope');
+  if (scopeEl) {
+    const co = activeCompanyId && allCompanies.find(c => c.id === activeCompanyId);
+    scopeEl.textContent = co ? `· ${co.name}` : '';
+  }
 }
 
 function populateProjectFilter() {
-  const projects = [...new Set(allTasks.map(t => t.project).filter(Boolean))];
+  const projects = allProjects
+    .filter(p => matchesActiveCompany(p.companyId))
+    .sort((a,b) => (a.name||'').localeCompare(b.name||''));
   const selects = [el('filter-project'), el('kanban-project-filter')];
   selects.forEach(sel => {
     if (!sel) return;
     const cur = sel.value;
-    sel.innerHTML = '<option value="">All Projects</option>' + projects.map(p => `<option value="${esc(p)}" ${cur===p?'selected':''}>${esc(p)}</option>`).join('');
+    sel.innerHTML = '<option value="">All Projects</option>' + projects.map(p => `<option value="${p.id}" ${cur===p.id?'selected':''}>${esc(p.name)}</option>`).join('');
   });
+  const coFilter = el('projects-company-filter');
+  if (coFilter) {
+    const cur = coFilter.value;
+    coFilter.innerHTML = '<option value="">All Companies</option>' + allCompanies.map(c => `<option value="${c.id}" ${cur===c.id?'selected':''}>${esc(c.name)}</option>`).join('');
+  }
+}
+
+// Populates the task-modal project <select>, scoped to whichever company is
+// currently chosen in that same form (falls back to the active workspace company).
+function populateProjectSelects() {
+  const sel = el('f-project');
+  if (!sel) return;
+  const companyScope = el('f-company')?.value || '';
+  const cur = sel.value;
+  const projects = allProjects
+    .filter(p => !p.archived)
+    .filter(p => companyScope ? p.companyId === companyScope : true)
+    .sort((a,b) => (a.name||'').localeCompare(b.name||''));
+  sel.innerHTML = '<option value="">No project</option>' + projects.map(p => `<option value="${p.id}" ${cur===p.id?'selected':''}>${esc(p.name)}</option>`).join('');
 }
 
 // ─── Companies ───────────────────────────────────────────
@@ -472,25 +551,163 @@ function renderCompanies() {
   }).join('');
 }
 
+// Companies a user is allowed to switch into: admins/managers see everything,
+// everyone else sees only the companies they've been added to.
+function visibleCompaniesForUser() {
+  if (['admin','manager'].includes(userProfile?.role)) return allCompanies;
+  return allCompanies.filter(c => (userProfile?.companies||[]).includes(c.id));
+}
+
 function renderCompanySwitcher() {
-  const myCompanies = allCompanies.filter(c => (userProfile?.companies||[]).includes(c.id) || ['admin','manager'].includes(userProfile?.role));
-  if (!myCompanies.length) { el('co-name').textContent = 'No Company'; return; }
-  const active = allCompanies[0];
-  if (active) { el('co-name').textContent = active.name; el('co-dot').style.background = active.color || '#22c55e'; }
+  // Reflect current selection in the pill
+  if (!activeCompanyId) {
+    el('co-name').textContent = 'All Companies';
+    el('co-dot').style.background = '#64748b';
+  } else {
+    const active = allCompanies.find(c => c.id === activeCompanyId);
+    if (active) { el('co-name').textContent = active.name; el('co-dot').style.background = active.color || '#22c55e'; }
+    else { activeCompanyId = ''; localStorage.removeItem('sg-active-company'); el('co-name').textContent = 'All Companies'; el('co-dot').style.background = '#64748b'; }
+  }
+  // Build the dropdown list
+  const list = el('company-dropdown-list');
+  if (list) {
+    const mine = visibleCompaniesForUser();
+    list.innerHTML = mine.map(c => `
+      <div class="company-dropdown-item ${c.id===activeCompanyId?'active':''}" data-company-id="${c.id}">
+        <div class="company-dot" style="background:${c.color||'#2563eb'}"></div><span>${esc(c.name)}</span>
+      </div>`).join('') || '<div style="padding:.5rem .625rem;font-size:.75rem;color:rgba(255,255,255,.4)">No companies yet</div>';
+    list.querySelectorAll('.company-dropdown-item').forEach(item => {
+      item.addEventListener('click', () => setActiveCompany(item.dataset.companyId));
+    });
+  }
+  const allItem = document.querySelector('.company-dropdown-item[data-company-id=""]');
+  if (allItem) allItem.classList.toggle('active', !activeCompanyId);
+}
+
+function setActiveCompany(id) {
+  activeCompanyId = id || '';
+  if (activeCompanyId) localStorage.setItem('sg-active-company', activeCompanyId);
+  else localStorage.removeItem('sg-active-company');
+  el('company-dropdown').classList.add('hidden');
+  el('company-switcher').classList.remove('open');
+  renderCompanySwitcher();
+  applyCompanyFilter();
+}
+
+// Re-renders every view that depends on which company workspace is active.
+function applyCompanyFilter() {
+  renderTasks();
+  renderProjectsSidebar();
+  populateProjectFilter();
+  if (currentView === 'projects') renderProjectsGrid();
+  const badge = el('nb-projects');
+  if (badge) badge.textContent = allProjects.filter(p => !p.archived && matchesActiveCompany(p.companyId)).length;
 }
 
 function populateCompanySelects() {
   const opts = '<option value="">No company</option>' + allCompanies.map(c => `<option value="${c.id}">${esc(c.name)}</option>`).join('');
-  [el('f-company'), el('invite-company'), el('fin-company')].forEach(sel => { if (sel) sel.innerHTML = opts; });
+  [el('f-company'), el('invite-company'), el('fin-company'), el('pr-company')].forEach(sel => { if (sel) sel.innerHTML = opts; });
   const filterOpts = '<option value="">All Companies</option>' + allCompanies.map(c => `<option value="${c.id}">${esc(c.name)}</option>`).join('');
   const financeFilter = el('finance-company-filter');
   if (financeFilter) financeFilter.innerHTML = filterOpts;
+  renderCompanySwitcher();
 }
 
 window.deleteCompany = async (id) => {
-  if (!confirm('Delete this company?')) return;
-  try { await deleteDoc(doc(db, 'companies', id)); showToast('Company deleted.', 'warning'); } catch { showToast('Failed.', 'error'); }
+  if (!confirm('Delete this company? Its projects and tasks will stay, but will show as "No company".')) return;
+  try {
+    await deleteDoc(doc(db, 'companies', id));
+    if (activeCompanyId === id) setActiveCompany('');
+    showToast('Company deleted.', 'warning');
+  } catch { showToast('Failed.', 'error'); }
 };
+
+// ─── Projects Grid (main view) ────────────────────────────
+function renderProjectsGrid() {
+  const g = el('projects-grid');
+  const coFilter = el('projects-company-filter')?.value || '';
+  const projects = allProjects
+    .filter(p => matchesActiveCompany(p.companyId))
+    .filter(p => !coFilter || p.companyId === coFilter)
+    .sort((a,b) => (a.name||'').localeCompare(b.name||''));
+  if (!projects.length) { g.innerHTML = '<div class="empty-state" style="grid-column:1/-1;padding:3rem">No projects yet. Create your first project to get a dedicated board!</div>'; return; }
+  g.innerHTML = projects.map(p => {
+    const co = allCompanies.find(c => c.id === p.companyId);
+    const tasks = allTasks.filter(t => t.projectId === p.id);
+    const done = tasks.filter(t => t.status === 'completed').length;
+    const pct = tasks.length ? Math.round(done / tasks.length * 100) : 0;
+    return `<div class="company-card project-card ${p.archived?'archived':''}" data-id="${p.id}">
+      <div class="company-card-header">
+        <div class="company-logo" style="background:${p.color||'#2563eb'}">${(p.name||'?').charAt(0).toUpperCase()}</div>
+        <div class="company-info">
+          <div class="company-card-name">${esc(p.name)}${p.archived?' <span style="font-weight:400;font-size:.7rem;color:var(--text-light)">(archived)</span>':''}</div>
+          ${co ? `<div class="project-card-company-tag"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>${esc(co.name)}</div>` : '<div class="project-card-company-tag">No company</div>'}
+        </div>
+      </div>
+      ${p.description?`<p class="project-card-desc">${esc(p.description)}</p>`:''}
+      <div class="project-card-progress-label"><span>${done}/${tasks.length} tasks done</span><span>${pct}%</span></div>
+      <div class="progress-bar-wrap md"><div class="progress-bar-fill" style="width:${pct}%;background:${p.color||'#2563eb'}"></div></div>
+      <div style="display:flex;gap:.5rem;margin-top:1rem">
+        <button class="btn-primary" style="font-size:.8rem;padding:.4rem .75rem;flex:1" onclick="event.stopPropagation();openProjectBoard('${p.id}')">Open Board</button>
+        <button class="btn-ghost" style="font-size:.8rem;padding:.4rem .75rem" onclick="event.stopPropagation();openProjectModal('${p.id}')">Edit</button>
+        <button class="btn-danger" style="font-size:.8rem;padding:.4rem .75rem" onclick="event.stopPropagation();deleteProject('${p.id}')">Delete</button>
+      </div>
+    </div>`;
+  }).join('');
+  g.querySelectorAll('.project-card').forEach(card => {
+    card.addEventListener('click', () => openProjectBoard(card.dataset.id));
+  });
+}
+
+const PROJECT_COLOR_PALETTE = ['#2563eb','#8b5cf6','#f59e0b','#22c55e','#ef4444','#06b6d4','#ec4899','#84cc16','#0ea5e9','#f97316'];
+
+function renderProjectColorSwatches(selected) {
+  const wrap = el('pr-color-swatches');
+  if (!wrap) return;
+  wrap.innerHTML = PROJECT_COLOR_PALETTE.map(c =>
+    `<div class="color-swatch ${c===selected?'active':''}" data-color="${c}" style="background:${c};color:${c}"></div>`).join('');
+  wrap.querySelectorAll('.color-swatch').forEach(sw => {
+    sw.addEventListener('click', () => {
+      wrap.querySelectorAll('.color-swatch').forEach(s => s.classList.remove('active'));
+      sw.classList.add('active');
+      el('pr-color').value = sw.dataset.color;
+    });
+  });
+}
+
+function openProjectModal(id) {
+  currentProjectId = id || null;
+  const p = id ? allProjects.find(p => p.id === id) : null;
+  el('project-modal-title').textContent = p ? 'Edit Project' : 'New Project';
+  el('project-id').value = p?.id || '';
+  el('pr-name-input').value = p?.name || '';
+  el('pr-company').value = p?.companyId || activeCompanyId || '';
+  el('pr-desc').value = p?.description || '';
+  el('pr-color').value = p?.color || PROJECT_COLOR_PALETTE[allProjects.length % PROJECT_COLOR_PALETTE.length];
+  el('pr-archived').checked = !!p?.archived;
+  el('delete-project-btn').style.display = p ? 'flex' : 'none';
+  renderProjectColorSwatches(el('pr-color').value);
+  showModal('project-modal-overlay');
+}
+
+async function createProject(data) {
+  try {
+    const ref = await addDoc(collection(db,'projects'), { ...data, createdBy: currentUser.uid, createdAt: serverTimestamp() });
+    showToast('Project created!','success'); return ref.id;
+  } catch { showToast('Failed to create project.','error'); throw new Error(); }
+}
+async function updateProject(id, data) {
+  try { await updateDoc(doc(db,'projects',id), data); showToast('Project saved!','success'); }
+  catch { showToast('Save failed.','error'); }
+}
+window.deleteProject = async (id) => {
+  if (!confirm('Delete this project? Tasks in it will remain but become unassigned from any project.')) return;
+  try {
+    await deleteDoc(doc(db, 'projects', id));
+    showToast('Project deleted.', 'warning');
+  } catch { showToast('Failed.', 'error'); }
+};
+window.openProjectModal = openProjectModal;
 
 // ─── Users ───────────────────────────────────────────────
 function renderUsers() {
@@ -676,13 +893,14 @@ function updateTodayHours() {
 
 // ─── Reports ─────────────────────────────────────────────
 function renderReports() {
+  const scoped = allTasks.filter(t => matchesActiveCompany(t.companyId));
   renderBarChart('report-priority-chart', [
-    { label:'High', value: allTasks.filter(t=>t.priority==='high').length, color:'#ef4444' },
-    { label:'Medium', value: allTasks.filter(t=>t.priority==='medium').length, color:'#f59e0b' },
-    { label:'Low', value: allTasks.filter(t=>t.priority==='low').length, color:'#22c55e' },
+    { label:'High', value: scoped.filter(t=>t.priority==='high').length, color:'#ef4444' },
+    { label:'Medium', value: scoped.filter(t=>t.priority==='medium').length, color:'#f59e0b' },
+    { label:'Low', value: scoped.filter(t=>t.priority==='low').length, color:'#22c55e' },
   ]);
   const byProject = {};
-  allTasks.forEach(t => { if (t.project) { byProject[t.project] = (byProject[t.project]||0) + 1; } });
+  scoped.forEach(t => { const p = projectNameFor(t); if (p) { byProject[p] = (byProject[p]||0) + 1; } });
   renderBarChart('report-project-chart', Object.entries(byProject).map(([label,value],i) => ({label, value, color: PROJECT_COLORS[i%PROJECT_COLORS.length]})));
 }
 
@@ -1002,7 +1220,8 @@ function openTask(id, defaultStatus='todo') {
     el('view-status').className = `status-badge ${task.status||'todo'}`;
     el('view-status').textContent = statusLabel(task.status);
     const proj = el('view-project');
-    if (task.project) { proj.textContent = task.project; proj.style.display=''; } else proj.style.display='none';
+    const pname = projectNameFor(task);
+    if (pname) { proj.textContent = pname; proj.style.display=''; } else proj.style.display='none';
     el('view-desc').textContent = task.description || 'No description provided.';
     el('view-due').textContent = task.dueDate ? new Date(task.dueDate).toLocaleDateString('en-US',{weekday:'short',month:'long',day:'numeric',year:'numeric'}) : 'No due date';
     el('view-assigned').textContent = task.assignedTo || 'Unassigned';
@@ -1036,15 +1255,23 @@ function populateEditForm(task) {
   el('f-priority').value = task.priority||'medium';
   el('f-status').value = task.status||'todo';
   el('f-due').value = task.dueDate||'';
-  el('f-project').value = task.project||'';
-  el('f-assigned').value = task.assignedTo||'';
   el('f-company').value = task.companyId||'';
+  populateProjectSelects();
+  el('f-project').value = task.projectId||'';
+  el('f-assigned').value = task.assignedTo||'';
   el('f-recurring').checked = !!task.recurring;
 }
 
 function resetTaskForm() {
   el('task-form').reset();
   el('task-id').value='';
+  el('f-company').value = activeCompanyId || '';
+  populateProjectSelects();
+  const kpf = el('kanban-project-filter')?.value;
+  if (kpf && currentView === 'kanban') {
+    const proj = allProjects.find(p => p.id === kpf);
+    if (proj) { el('f-company').value = proj.companyId || ''; populateProjectSelects(); el('f-project').value = kpf; }
+  }
 }
 
 function renderAttachments(task) {
@@ -1199,6 +1426,16 @@ function bindGlobalEvents() {
     if (currentTaskId) showView_modal(false); else hideModal('task-modal-overlay');
   });
 
+  // Cascading Company ↔ Project fields in the task form: picking a company
+  // narrows the project list to that company's projects; picking a project
+  // snaps the company field to match (a project always belongs to one company).
+  el('f-company').addEventListener('change', () => { populateProjectSelects(); });
+  el('f-project').addEventListener('change', () => {
+    const pid = el('f-project').value;
+    const proj = pid ? allProjects.find(p => p.id === pid) : null;
+    if (proj) el('f-company').value = proj.companyId || '';
+  });
+
   // Save task
   el('save-task-btn').addEventListener('click', async () => {
     const title = el('f-title').value.trim();
@@ -1207,15 +1444,21 @@ function bindGlobalEvents() {
     saveBtn.disabled = true;
     saveBtn.querySelector('.btn-loader').classList.remove('hidden');
     saveBtn.querySelector('.btn-text').classList.add('hidden');
+    const projectId = el('f-project').value;
+    const proj = projectId ? allProjects.find(p => p.id === projectId) : null;
+    // A chosen project owns the company relationship; otherwise fall back to
+    // whatever was picked directly in the Company field.
+    const companyId = proj ? (proj.companyId || '') : el('f-company').value;
     const data = {
       title,
       description: el('f-desc').value.trim(),
       priority: el('f-priority').value,
       status: el('f-status').value,
       dueDate: el('f-due').value,
-      project: el('f-project').value.trim(),
+      projectId: projectId || null,
+      project: proj ? proj.name : '',
       assignedTo: el('f-assigned').value.trim(),
-      companyId: el('f-company').value,
+      companyId,
       recurring: el('f-recurring').checked
     };
     try {
@@ -1330,6 +1573,56 @@ function bindGlobalEvents() {
     finally { btn.disabled=false; btn.querySelector('.btn-loader').classList.add('hidden'); btn.querySelector('.btn-text').classList.remove('hidden'); }
   });
 
+  // Company switcher dropdown
+  el('company-switcher').addEventListener('click', e => {
+    e.stopPropagation();
+    const dd = el('company-dropdown');
+    const opening = dd.classList.contains('hidden');
+    dd.classList.toggle('hidden');
+    el('company-switcher').classList.toggle('open', opening);
+  });
+  document.querySelector('.company-dropdown-item[data-company-id=""]').addEventListener('click', () => setActiveCompany(''));
+  el('company-dropdown-manage').addEventListener('click', () => {
+    el('company-dropdown').classList.add('hidden');
+    el('company-switcher').classList.remove('open');
+    switchView('companies');
+    if (window.innerWidth <= 768) closeSidebar();
+  });
+  document.addEventListener('click', e => {
+    const dd = el('company-dropdown');
+    if (!dd.classList.contains('hidden') && !dd.contains(e.target) && !el('company-switcher').contains(e.target)) {
+      dd.classList.add('hidden');
+      el('company-switcher').classList.remove('open');
+    }
+  });
+
+  // Projects
+  el('new-project-btn')?.addEventListener('click', () => openProjectModal(null));
+  el('add-project-btn').addEventListener('click', () => openProjectModal(null));
+  el('project-close-btn').addEventListener('click', () => hideModal('project-modal-overlay'));
+  el('project-cancel-btn').addEventListener('click', () => hideModal('project-modal-overlay'));
+  el('project-modal-overlay').addEventListener('click', e => { if (e.target===el('project-modal-overlay')) hideModal('project-modal-overlay'); });
+  el('pr-company').addEventListener('change', () => renderProjectColorSwatches(el('pr-color').value));
+  el('projects-company-filter')?.addEventListener('change', renderProjectsGrid);
+  el('delete-project-btn').addEventListener('click', async () => {
+    if (!currentProjectId) return;
+    await deleteProject(currentProjectId);
+    hideModal('project-modal-overlay');
+  });
+  el('save-project-btn').addEventListener('click', async () => {
+    const name = el('pr-name-input').value.trim();
+    if (!name) { showToast('Project name required.','error'); return; }
+    const btn = el('save-project-btn');
+    btn.disabled=true; btn.querySelector('.btn-loader').classList.remove('hidden'); btn.querySelector('.btn-text').classList.add('hidden');
+    const data = { name, companyId: el('pr-company').value, description: el('pr-desc').value.trim(), color: el('pr-color').value, archived: el('pr-archived').checked };
+    try {
+      const pid = el('project-id').value;
+      if (pid) await updateProject(pid, data);
+      else await createProject(data);
+      hideModal('project-modal-overlay');
+    } finally { btn.disabled=false; btn.querySelector('.btn-loader').classList.add('hidden'); btn.querySelector('.btn-text').classList.remove('hidden'); }
+  });
+
   // Users
   el('invite-user-btn')?.addEventListener('click', () => { el('invite-uid').value=''; el('invite-name').value=''; el('invite-role').value='member'; el('invite-company').value=''; showModal('invite-modal-overlay'); });
   el('invite-close-btn').addEventListener('click', () => hideModal('invite-modal-overlay'));
@@ -1413,12 +1706,6 @@ function bindGlobalEvents() {
   el('menu-btn').addEventListener('click', () => { el('sidebar').classList.add('open'); el('sidebar-overlay').classList.remove('hidden'); });
   el('sidebar-close').addEventListener('click', closeSidebar);
   el('sidebar-overlay').addEventListener('click', closeSidebar);
-
-  // Add project
-  el('add-project-btn').addEventListener('click', () => {
-    const name = prompt('Enter project name:');
-    if (name?.trim()) { openTask(null); setTimeout(() => el('f-project').value = name.trim(), 100); }
-  });
 
   // Export CSV
   el('export-tasks-btn')?.addEventListener('click', exportCSV);
@@ -1512,7 +1799,7 @@ function bindGlobalEvents() {
 
   // Keyboard shortcuts
   document.addEventListener('keydown', e => {
-    if (e.key==='Escape') { hideModal('task-modal-overlay'); hideModal('note-modal-overlay'); hideModal('meeting-modal-overlay'); hideModal('company-modal-overlay'); hideModal('invite-modal-overlay'); hideModal('finance-modal-overlay'); hideModal('pettycash-modal-overlay'); }
+    if (e.key==='Escape') { hideModal('task-modal-overlay'); hideModal('note-modal-overlay'); hideModal('meeting-modal-overlay'); hideModal('company-modal-overlay'); hideModal('project-modal-overlay'); hideModal('invite-modal-overlay'); hideModal('finance-modal-overlay'); hideModal('pettycash-modal-overlay'); }
     if ((e.ctrlKey||e.metaKey) && e.key==='n') { e.preventDefault(); openTask(null); }
   });
 }
@@ -1532,6 +1819,7 @@ window.switchView = function(name) {
   if (name==='meetings') renderMeetings();
   if (name==='timeclock') { renderTimeLog(); updateTodayHours(); }
   if (name==='companies') renderCompanies();
+  if (name==='projects') renderProjectsGrid();
   if (name==='users') renderUsers();
   if (name==='reports') renderReports();
   if (name==='finance') renderFinance();
@@ -1557,8 +1845,11 @@ function updateGreeting() {
 
 function exportCSV() {
   const tasks = getFilteredTasks();
-  const headers = ['Title','Description','Priority','Status','Due Date','Project','Assigned To'];
-  const rows = tasks.map(t => [t.title,t.description||'',t.priority,statusLabel(t.status),t.dueDate||'',t.project||'',t.assignedTo||''].map(v=>`"${String(v).replace(/"/g,'""')}"`).join(','));
+  const headers = ['Title','Description','Priority','Status','Due Date','Project','Company','Assigned To'];
+  const rows = tasks.map(t => {
+    const co = allCompanies.find(c => c.id === t.companyId);
+    return [t.title,t.description||'',t.priority,statusLabel(t.status),t.dueDate||'',projectNameFor(t),co?co.name:'',t.assignedTo||''].map(v=>`"${String(v).replace(/"/g,'""')}"`).join(',');
+  });
   const csv = [headers.join(','), ...rows].join('\n');
   const a = document.createElement('a');
   a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
