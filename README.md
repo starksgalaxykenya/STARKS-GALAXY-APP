@@ -1,4 +1,4 @@
-[README.md](https://github.com/user-attachments/files/31119199/README.md)
+[Uploading README.md…]()
 # TaskFlow – Setup & Deployment Guide
 
 ## Overview
@@ -246,6 +246,42 @@ Your app will be live at: `https://your-project-id.web.app`
 
 > **Note:** Make sure your Firebase project's **Authorized domains** includes your GitHub Pages URL.
 > Firebase Console → Authentication → Settings → Authorized domains → Add domain
+
+---
+
+## 8b. PWA — install prompts & offline support (new)
+
+The app is now a properly working installable PWA, not just the manifest
+boilerplate it shipped with (the icon paths were pointing at `./ICONS/...`
+while the actual folder is `icons/` — on a case-sensitive host like Firebase
+Hosting or GitHub Pages that 404s every icon and silently breaks
+installability; this is now fixed everywhere).
+
+- **`js/pwa-install.js`** is loaded on every page (login, signup, dashboard)
+  and shows a custom bottom banner prompting the user to install — using the
+  browser's native `beforeinstallprompt` event on Chrome/Edge/Android. On
+  iOS Safari (which doesn't support that event at all) it instead shows
+  "Tap Share → Add to Home Screen" instructions. Both banners remember a
+  dismissal for 7 days via `localStorage` instead of nagging every visit.
+- A manual **Install app** button also lives in the dashboard sidebar
+  (next to the theme toggle) for anyone who dismissed the banner earlier or
+  is browsing on a device where the prompt doesn't fire automatically.
+- **`sw.js`** was rewritten: it precaches the real app-shell files (the old
+  version referenced `./CSS/`, `./JS/` and a `signup.js` that doesn't exist,
+  so the install step silently failed and nothing was ever cached).
+  It now uses network-first for page navigations (so you always get fresh
+  content when online, with an offline fallback) and cache-first for
+  static assets, plus a proper "update available" banner: when a new
+  version is deployed, the next visit shows a **Refresh** prompt instead of
+  serving a stale cached version forever.
+- **`manifest.json`** got the icon-path fix plus proper `id`, `description`,
+  `scope`, `categories`, and two home-screen **shortcuts** (New Task,
+  Kanban Board) that deep-link into the dashboard — handled in `js/app.js`.
+
+No Firebase changes are needed for any of this — it's all static-file and
+service-worker behavior. After deploying, do a hard refresh once (or clear
+the old service worker in DevTools → Application) so the fixed `sw.js`
+replaces whatever was cached under the old broken version.
 
 ---
 
