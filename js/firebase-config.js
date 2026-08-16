@@ -85,6 +85,17 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
+    // Projects: readable by all authenticated team members, writable by the
+    // creator or an admin/manager. Projects are the parent of tasks and give
+    // each company its own set of boards.
+    match /projects/{projectId} {
+      allow read: if isAuth();
+      allow create: if isAuth() && request.resource.data.createdBy == request.auth.uid;
+      allow update, delete: if isAuth() && (
+        resource.data.createdBy == request.auth.uid || isAdmin()
+      );
+    }
+
     // Finance Entries: income / expense / accrual — readable by all authenticated
     // team members, writable by the creator or an admin/manager.
     match /financeEntries/{entryId} {
@@ -133,4 +144,7 @@ service firebase.storage {
 //
 // Collection: timeLogs
 //   Fields: userId ASC, date DESC
+//
+// Collection: projects
+//   No composite index required (simple collection query).
 // ============================================================
