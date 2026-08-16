@@ -331,6 +331,9 @@
             <select id="finance-company-filter" class="filter-select">
               <option value="">All Companies</option>
             </select>
+            <select id="finance-project-filter" class="filter-select">
+              <option value="">All Projects</option>
+            </select>
             <button class="btn-ghost" id="export-finance-btn"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> Export CSV</button>
             <button class="btn-primary" id="new-finance-btn"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> New Entry</button>
           </div>
@@ -352,9 +355,14 @@
 
         <!-- Overview tab -->
         <div class="fin-tab-panel active" id="fintab-overview">
+          <div class="dash-card" id="finance-budget-card" style="margin-bottom:1.25rem"></div>
           <div class="dash-grid">
             <div class="dash-card"><div class="card-header"><span class="card-title">Income vs Expense by Month</span></div><div id="finance-monthly-chart"></div></div>
             <div class="dash-card"><div class="card-header"><span class="card-title">Expenses by Category</span></div><div id="finance-category-chart"></div></div>
+          </div>
+          <div class="dash-card" style="margin-top:1.25rem">
+            <div class="card-header"><span class="card-title" id="finance-scope-chart-title">Spend Breakdown</span></div>
+            <div id="finance-scope-chart"></div>
           </div>
           <div class="dash-card" style="margin-top:1.25rem">
             <div class="card-header"><span class="card-title">Recent Transactions</span></div>
@@ -493,6 +501,13 @@
       <div class="section-label">Attachments</div>
       <div class="attachments-list" id="view-attachments"></div>
       <label class="upload-label"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg> Upload file<input type="file" id="attachment-input" multiple hidden/></label>
+      <div class="section-label">Sticky Notes</div>
+      <div class="sticky-notes-list" id="task-notes-list"></div>
+      <div class="sticky-note-controls">
+        <button class="btn-ghost sm" id="new-sticky-note-btn"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> New sticky note</button>
+        <select id="link-note-select" class="filter-select sm"><option value="">Link an existing note…</option></select>
+        <button class="btn-ghost sm" id="link-note-btn">Link</button>
+      </div>
       <div class="section-label">Activity Log</div>
       <div class="activity-list" id="activity-list"></div>
       <div class="section-label">Comments <span id="comment-count" style="font-weight:400;text-transform:none;letter-spacing:0;font-size:.8rem"></span></div>
@@ -548,6 +563,12 @@
     </div>
     <div class="modal-body">
       <input type="hidden" id="note-id"/>
+      <input type="hidden" id="note-task-id"/>
+      <div class="note-task-link-banner hidden" id="note-task-link-banner">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+        <span>Linked to task: <strong id="note-task-link-title"></strong></span>
+        <button type="button" class="text-link" id="note-task-unlink-btn" style="background:none;border:none;cursor:pointer;font-size:.75rem">Unlink</button>
+      </div>
       <div class="field-group"><input type="text" id="note-title" placeholder="Note title…" style="font-size:1.125rem;font-weight:700"/></div>
       <div class="form-row-2">
         <div class="field-group"><label>Category</label><select id="note-category"><option value="general">General</option><option value="personal">Personal</option><option value="shared">Shared with team</option><option value="project">Project note</option></select></div>
@@ -630,9 +651,12 @@
       <div class="field-group"><label>Industry</label><input type="text" id="co-industry" placeholder="Technology, Finance, Retail…"/></div>
       <div class="field-group"><label>Website</label><input type="url" id="co-website" placeholder="https://company.com"/></div>
       <div class="field-group"><label>Description</label><textarea id="co-desc" placeholder="Brief description…" rows="2"></textarea></div>
-      <div class="field-group">
-        <label>Brand Color</label>
-        <input type="color" id="co-color" value="#2563eb" style="width:60px;height:36px;padding:2px;border:1.5px solid var(--border);border-radius:var(--radius-sm);cursor:pointer"/>
+      <div class="form-row-2">
+        <div class="field-group">
+          <label>Brand Color</label>
+          <input type="color" id="co-color" value="#2563eb" style="width:60px;height:36px;padding:2px;border:1.5px solid var(--border);border-radius:var(--radius-sm);cursor:pointer"/>
+        </div>
+        <div class="field-group"><label>Monthly Budget (KES)</label><input type="number" id="co-budget" min="0" step="0.01" placeholder="Optional"/></div>
       </div>
     </div>
     <div class="modal-footer">
@@ -657,6 +681,7 @@
       <div class="field-group"><label>Project Name *</label><input type="text" id="pr-name-input" placeholder="e.g. Website Redesign" required/></div>
       <div class="field-group"><label>Company</label><select id="pr-company"><option value="">No company</option></select></div>
       <div class="field-group"><label>Description</label><textarea id="pr-desc" placeholder="What's this project about?" rows="2"></textarea></div>
+      <div class="field-group"><label>Monthly Budget (KES)</label><input type="number" id="pr-budget" min="0" step="0.01" placeholder="Optional"/></div>
       <div class="field-group">
         <label>Color</label>
         <div class="color-swatch-row" id="pr-color-swatches"></div>
@@ -749,7 +774,7 @@
       </div>
       <div class="form-row-2">
         <div class="field-group"><label>Company</label><select id="fin-company"><option value="">No company</option></select></div>
-        <div class="field-group"><label>Project</label><input type="text" id="fin-project" placeholder="Optional"/></div>
+        <div class="field-group"><label>Project</label><select id="fin-project"><option value="">No project</option></select></div>
       </div>
       <div class="field-group"><label>Description</label><textarea id="fin-description" placeholder="What is this for?" rows="2"></textarea></div>
     </div>
