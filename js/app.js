@@ -93,6 +93,22 @@ function initApp() {
   startLiveClock();
   updateGreeting();
   document.getElementById('today-date').textContent = new Date().toLocaleDateString('en-US', { weekday:'long', year:'numeric', month:'long', day:'numeric' });
+  handleShortcutParams();
+}
+
+// Handles the deep-link params from the PWA's home-screen shortcuts
+// (manifest.json → "shortcuts"), e.g. jumping straight to New Task or the
+// Kanban board when launched that way, instead of always landing on Dashboard.
+function handleShortcutParams() {
+  const params = new URLSearchParams(window.location.search);
+  const view = params.get('view');
+  const action = params.get('action');
+  if (view) switchView(view);
+  if (action === 'new-task') setTimeout(() => openTask(null), 150);
+  if (view || action) {
+    // Clean the URL so a later refresh/share doesn't replay the shortcut.
+    window.history.replaceState({}, '', window.location.pathname);
+  }
 }
 
 function setupUI() {
@@ -1918,6 +1934,23 @@ function bindGlobalEvents() {
     await signOut(auth);
     window.location.href = 'index.html';
   });
+
+  // Install app (button shown only once pwa-install.js confirms the app
+  // is actually installable, or on iOS where it opens instructions instead)
+  const pwaBtn = el('pwa-install-menu-btn');
+  if (pwaBtn) {
+    const syncPwaBtn = () => {
+      const installed = window.StarksPWA?.isInstalled?.();
+      const installable = window.StarksPWA?.isInstallable?.() || /iphone|ipad|ipod/i.test(navigator.userAgent);
+      pwaBtn.classList.toggle('hidden', !!installed || !installable);
+    };
+    window.addEventListener('sg-pwa-installable', syncPwaBtn);
+    syncPwaBtn();
+    pwaBtn.addEventListener('click', () => {
+      const handled = window.StarksPWA?.promptInstall?.();
+      if (!handled) showToast('Use your browser menu to install this app.', 'warning');
+    });
+  }
 
   // Calendar nav
   el('cal-prev').addEventListener('click', () => { calendarDate.setMonth(calendarDate.getMonth()-1); renderCalendar(); });
